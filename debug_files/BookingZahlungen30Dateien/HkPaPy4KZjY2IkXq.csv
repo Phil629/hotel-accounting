@@ -1,0 +1,35 @@
+Art,Referenznummer,Check-in,Checkout,"Name des Gastes",Buchungsstatus,Währung,Zahlungsstatus,Betrag,"Datum der Auszahlung",Auszahlungsnummer
+Buchung,5926636070,"14. Okt. 2025","15. Okt. 2025","Tsubasa Watanabe",ok,EUR,"Paid Online",76.95,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5889341147,"14. Okt. 2025","15. Okt. 2025","Nailam Alarareh",ok,EUR,"Paid Online",96.14,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5769821564,"14. Okt. 2025","15. Okt. 2025","Roland Huhn",ok,EUR,"Paid Online",81.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5343499459,"14. Okt. 2025","15. Okt. 2025","Dora Filippou",ok,EUR,"Paid Online",91.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5352563193,"13. Okt. 2025","14. Okt. 2025","Jan N. van Rijn",ok,EUR,"Paid Online",73.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5143084418,"13. Okt. 2025","14. Okt. 2025","Arthur Schleiermacher",ok,EUR,"Paid Online",70.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6578922975,"12. Okt. 2025","13. Okt. 2025","Gerhard Lechner",ok,EUR,"Paid Online",157.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6277319054,"12. Okt. 2025","13. Okt. 2025","Hiroyuki Matsui",ok,EUR,"Paid Online",60.71,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6998807736,"11. Okt. 2025","12. Okt. 2025","Jürgen Meyer",ok,EUR,"Paid Online",121.50,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6770190312,"11. Okt. 2025","12. Okt. 2025","Taylor Gronka",ok,EUR,"Paid Online",90.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6600804751,"11. Okt. 2025","12. Okt. 2025","Per Andersson",ok,EUR,"Paid Online",86.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6571427407,"11. Okt. 2025","12. Okt. 2025","Michael Samuel",ok,EUR,"Paid Online",241.20,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6519914938,"9. Okt. 2025","12. Okt. 2025","Anja Hesse",ok,EUR,"Paid Online",264.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6086882822,"11. Okt. 2025","12. Okt. 2025","Katharina Baumeister",ok,EUR,"Paid Online",94.50,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5650323909,"11. Okt. 2025","12. Okt. 2025","Thomas Kumke",ok,EUR,"Paid Online",120.60,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5518847318,"11. Okt. 2025","12. Okt. 2025","Klaus Bernhart",ok,EUR,"Paid Online",86.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5426669597,"11. Okt. 2025","12. Okt. 2025","Frank Faber",ok,EUR,"Paid Online",122.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6835393639,"5. Okt. 2025","11. Okt. 2025","Alexis Nikolakopoulos",ok,EUR,"Paid Online",693.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6257666480,"9. Okt. 2025","11. Okt. 2025","Emily Angela Schmölz",ok,EUR,"Paid Online",175.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5744831786,"5. Okt. 2025","11. Okt. 2025","Jan Miśkiewicz",ok,EUR,"Paid Online",613.80,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5525702836,"5. Okt. 2025","11. Okt. 2025","Jihong Huang",ok,EUR,"Paid Online",561.33,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5223374828,"10. Okt. 2025","11. Okt. 2025","Jury Vullo",ok,EUR,"Paid Online",93.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6844142312,"9. Okt. 2025","10. Okt. 2025","Volker Lohmann",ok,EUR,"Paid Online",100.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6638734364,"7. Okt. 2025","10. Okt. 2025","Fabian Thiel",ok,EUR,"Paid Online",348.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5702509056,"8. Okt. 2025","10. Okt. 2025","ann enocksson",ok,EUR,"Paid Online",284.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5608685224,"5. Okt. 2025","10. Okt. 2025","Daniela Metz",ok,EUR,"Paid Online",558.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5593371622,"5. Okt. 2025","10. Okt. 2025","Helmut Weiser",ok,EUR,"Paid Online",514.80,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6777293610,"8. Okt. 2025","9. Okt. 2025","Detlev Gündel",ok,EUR,"Paid Online",122.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6164071573,"8. Okt. 2025","9. Okt. 2025","Erwan Ménard",ok,EUR,"Paid Online",200.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6110728348,"7. Okt. 2025","9. Okt. 2025","Gerold Bruns",ok,EUR,"Paid Online",289.80,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,6025235371,"8. Okt. 2025","9. Okt. 2025","Tobias Kirchhoff",ok,EUR,"Paid Online",126.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5760780831,"8. Okt. 2025","9. Okt. 2025","Diogo Magalhães",ok,EUR,"Paid Online",137.00,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5395575011,"5. Okt. 2025","9. Okt. 2025","Shun Zhou",ok,EUR,"Paid Online",365.40,"16. Okt. 2025",HkPaPy4KZjY2IkXq
+Buchung,5224779881,"7. Okt. 2025","9. Okt. 2025","Paula Sofia Suasti Bonilla",ok,EUR,"Paid Online",266.40,"16. Okt. 2025",HkPaPy4KZjY2IkXq

@@ -1,0 +1,51 @@
+Type,"Reference number",Check-in,Checkout,"Guest name","Reservation status",Currency,"Payment status",Amount,"Payout date","Payout ID"
+Reservation,6640998854,"10 Jun 2025","11 Jun 2025","Patrick Neurode",ok,EUR,"Paid Online",82.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6640926554,"10 Jun 2025","11 Jun 2025","Christina Linke",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6619060616,"10 Jun 2025","11 Jun 2025","Tania Eliseeva",ok,EUR,"Paid Online",68.40,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6565504167,"9 Jun 2025","11 Jun 2025","Aldrik Auth",ok,EUR,"Paid Online",131.40,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6122785036,"10 Jun 2025","11 Jun 2025","Sebastian Gollas",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5977212424,"10 Jun 2025","11 Jun 2025","Victor Andes Marroquin  Winkelmann",ok,EUR,"Paid Online",68.40,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5307315249,"10 Jun 2025","11 Jun 2025","Jan Klein",ok,EUR,"Paid Online",94.50,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5172868958,"10 Jun 2025","11 Jun 2025","Andreas Frey",ok,EUR,"Paid Online",73.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6905917408,"9 Jun 2025","10 Jun 2025","Julia Profft",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6565535450,"9 Jun 2025","10 Jun 2025","Alina Khariebati",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5051936033,"9 Jun 2025","10 Jun 2025","john byrne",ok,EUR,"Paid Online",69.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4902643108,"9 Jun 2025","10 Jun 2025","Marvin Rath",ok,EUR,"Paid Online",79.20,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6975431277,"8 Jun 2025","9 Jun 2025","Emir Kaan Ipek",ok,EUR,"Paid Online",71.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6794260213,"8 Jun 2025","9 Jun 2025","Anna Hlamazda",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6318770114,"8 Jun 2025","9 Jun 2025","Aldrik Auth",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6252345877,"8 Jun 2025","9 Jun 2025","Sebastian Drabinski",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6157553112,"7 Jun 2025","9 Jun 2025","Carmela Garzelli",ok,EUR,"Paid Online",160.20,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5751677964,"8 Jun 2025","9 Jun 2025","Lara Gierga",ok,EUR,"Paid Online",94.50,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5662250852,"8 Jun 2025","9 Jun 2025","Dardan Demaku",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5629557032,"6 Jun 2025","9 Jun 2025","TING YAO WENG",ok,EUR,"Paid Online",270.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5461214994,"6 Jun 2025","9 Jun 2025","Dirk Ickenroth",ok,EUR,"Paid Online",257.40,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5442767503,"7 Jun 2025","9 Jun 2025","Mar Ta",ok,EUR,"Paid Online",162.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5371578089,"8 Jun 2025","9 Jun 2025","Kathleen Gatliffe",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5274503470,"8 Jun 2025","9 Jun 2025","Jana Buckermann",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5253116050,"8 Jun 2025","9 Jun 2025","Nurpelin Canal",ok,EUR,"Paid Online",65.70,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5089696300,"8 Jun 2025","9 Jun 2025","Aleksandr Rusanov",ok,EUR,"Paid Online",71.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4792423280,"5 Jun 2025","9 Jun 2025","Gina Schönfeld",ok,EUR,"Paid Online",458.10,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5980984049,"6 Jun 2025","8 Jun 2025","Vitus Zeller",ok,EUR,"Paid Online",216.90,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5904320810,"7 Jun 2025","8 Jun 2025","Paul Bunjes",ok,EUR,"Paid Online",91.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5637999457,"7 Jun 2025","8 Jun 2025","Sebastian Hickert",ok,EUR,"Paid Online",115.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5442764676,"7 Jun 2025","8 Jun 2025","Mary Therese Jamelarin",ok,EUR,"Paid Online",94.50,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5051951992,"7 Jun 2025","8 Jun 2025","Benita Heid",ok,EUR,"Paid Online",123.30,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4792775656,"5 Jun 2025","8 Jun 2025","Heide Leonhardt",ok,EUR,"Paid Online",424.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4493837565,"7 Jun 2025","8 Jun 2025","Markus Brenneis",ok,EUR,"Paid Online",394.20,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4307321866,"6 Jun 2025","8 Jun 2025","Benjamin Chappell",ok,EUR,"Paid Online",296.87,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6655374498,"6 Jun 2025","7 Jun 2025","Bruce Stockton",ok,EUR,"Paid Online",73.80,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6488911512,"6 Jun 2025","7 Jun 2025","Emmanuel Porten",ok,EUR,"Paid Online",69.30,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6023068677,"6 Jun 2025","7 Jun 2025","jalink kyra",ok,EUR,"Paid Online",98.10,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5751474593,"6 Jun 2025","7 Jun 2025","Cristina Honciu",ok,EUR,"Paid Online",147.60,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5650198561,"6 Jun 2025","7 Jun 2025","Zlatina Nikolova",ok,EUR,"Paid Online",108.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5639219551,"6 Jun 2025","7 Jun 2025","Margit Hefter",ok,EUR,"Paid Online",69.30,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5509969740,"6 Jun 2025","7 Jun 2025","Cristina Riffarth",ok,EUR,"Paid Online",73.80,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5157902911,"6 Jun 2025","7 Jun 2025","Susanne Doetz",ok,EUR,"Paid Online",76.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4684799471,"6 Jun 2025","7 Jun 2025","Joanne Baker",ok,EUR,"Paid Online",98.10,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4482041980,"5 Jun 2025","6 Jun 2025","Kerstin Droß-Krüpe",ok,EUR,"Paid Online",77.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,4371178162,"5 Jun 2025","6 Jun 2025","Nailam Alarareh",ok,EUR,"Paid Online",75.85,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,6209991570,"4 Jun 2025","5 Jun 2025","Edel Mangan",ok,EUR,"Paid Online",106.20,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5984196313,"4 Jun 2025","5 Jun 2025","Ernst Raschhofer",ok,EUR,"Paid Online",92.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5385874269,"1 Jun 2025","5 Jun 2025","Daniel Klocke",ok,EUR,"Paid Online",378.00,"12 Jun 2025",t0x3TKOhuxzpufmk
+Reservation,5196039911,"4 Jun 2025","5 Jun 2025","Susan Spence",ok,EUR,"Paid Online",106.20,"12 Jun 2025",t0x3TKOhuxzpufmk

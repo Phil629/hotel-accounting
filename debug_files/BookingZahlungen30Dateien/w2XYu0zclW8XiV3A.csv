@@ -1,0 +1,48 @@
+Art,Referenznummer,Check-in,Checkout,"Name des Gastes",Buchungsstatus,Währung,Zahlungsstatus,Betrag,"Datum der Auszahlung",Auszahlungsnummer
+Buchung,6839042690,"12. Aug. 2025","13. Aug. 2025","Arash Mamedi",ok,EUR,"Paid Online",83.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6671279826,"12. Aug. 2025","13. Aug. 2025","daniela invernizzi",ok,EUR,"Paid Online",244.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6543791238,"12. Aug. 2025","13. Aug. 2025","Marina Fiorentini",ok,EUR,"Paid Online",78.30,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5311540779,"12. Aug. 2025","13. Aug. 2025","Waheed Barghouthi",ok,EUR,"Paid Online",74.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5294864743,"12. Aug. 2025","13. Aug. 2025","Walter Hörmann",ok,EUR,"Paid Online",94.50,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,4987954838,"12. Aug. 2025","13. Aug. 2025","Prasad Damle",ok,EUR,"Paid Online",120.60,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6960182686,"11. Aug. 2025","12. Aug. 2025","Schiffer Bart",ok,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6944450382,"11. Aug. 2025","12. Aug. 2025","Kai Hofmann",cancelled,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5372072498,"11. Aug. 2025","12. Aug. 2025","Martin Dölger",ok,EUR,"Paid Online",105.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6962909122,"10. Aug. 2025","11. Aug. 2025","Christa Diekmann",ok,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6847468041,"10. Aug. 2025","11. Aug. 2025","Bodil Eriksson",ok,EUR,"Paid Online",71.10,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6663320026,"10. Aug. 2025","11. Aug. 2025","Pratheepan Hemakumar",ok,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6038789304,"10. Aug. 2025","11. Aug. 2025","Christina Beermann-Scheffler",ok,EUR,"Paid Online",69.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5437050264,"10. Aug. 2025","11. Aug. 2025","Danilo Accorsi",ok,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5397410666,"10. Aug. 2025","11. Aug. 2025","susan wilson-schmitz",ok,EUR,"Paid Online",115.64,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5175246735,"10. Aug. 2025","11. Aug. 2025","Kaiser Dieter",ok,EUR,"Paid Online",105.30,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,4686644159,"8. Aug. 2025","11. Aug. 2025","Matteo Caserta",ok,EUR,"Paid Online",707.80,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,4462683203,"9. Aug. 2025","11. Aug. 2025","Doris Schmid",ok,EUR,"Paid Online",202.50,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6799378900,"9. Aug. 2025","10. Aug. 2025","Jinhao Long",ok,EUR,"Paid Online",97.90,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6649459459,"9. Aug. 2025","10. Aug. 2025","Cornelia Koch",ok,EUR,"Paid Online",92.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6517471389,"9. Aug. 2025","10. Aug. 2025","Thomas Fischbach",ok,EUR,"Paid Online",125.10,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6360729169,"9. Aug. 2025","10. Aug. 2025","Franz Lange",ok,EUR,"Paid Online",289.80,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5928858866,"9. Aug. 2025","10. Aug. 2025","Jürgen Zarske",ok,EUR,"Paid Online",125.10,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5781625131,"9. Aug. 2025","10. Aug. 2025","Susanne Steinbauer",ok,EUR,"Paid Online",199.80,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5722521400,"9. Aug. 2025","10. Aug. 2025","irmgard kadelbach",ok,EUR,"Paid Online",128.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5636100874,"9. Aug. 2025","10. Aug. 2025","Oliver Mohr",ok,EUR,"Paid Online",199.80,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6788739484,"8. Aug. 2025","9. Aug. 2025","Andreas Barbian",ok,EUR,"Paid Online",87.30,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6745493613,"8. Aug. 2025","9. Aug. 2025","Hendrik Stock",ok,EUR,"Paid Online",68.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6689203331,"7. Aug. 2025","9. Aug. 2025","Hilda Pressler",ok,EUR,"Paid Online",428.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6220501234,"8. Aug. 2025","9. Aug. 2025","Hendrik Stock",ok,EUR,"Paid Online",68.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6031351106,"8. Aug. 2025","9. Aug. 2025","Michiko Sawada",ok,EUR,"Paid Online",133.95,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5828331711,"8. Aug. 2025","9. Aug. 2025","Nina Klinkel",ok,EUR,"Paid Online",68.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5751861752,"8. Aug. 2025","9. Aug. 2025","Jolanta Makuch-Wróblewska",ok,EUR,"Paid Online",134.06,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5250229098,"8. Aug. 2025","9. Aug. 2025","Anatolii Maksimov",ok,EUR,"Paid Online",70.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6809017420,"6. Aug. 2025","8. Aug. 2025","Ton van Gestel",ok,EUR,"Paid Online",157.50,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6793750674,"7. Aug. 2025","8. Aug. 2025","Christopher Todd",ok,EUR,"Paid Online",82.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6356528780,"6. Aug. 2025","8. Aug. 2025","Williner Beat",ok,EUR,"Paid Online",191.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6237642176,"7. Aug. 2025","8. Aug. 2025","Frank Becker",ok,EUR,"Paid Online",172.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6014291989,"3. Aug. 2025","8. Aug. 2025","Gabriel Cardoso",ok,EUR,"Paid Online",340.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5941848982,"7. Aug. 2025","8. Aug. 2025","Cup Cycle GmbH",ok,EUR,"Paid Online",68.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5832865876,"7. Aug. 2025","8. Aug. 2025","Markus Voß",ok,EUR,"Paid Online",97.20,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5555448269,"7. Aug. 2025","8. Aug. 2025","Katia Schuhmacher",ok,EUR,"Paid Online",68.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5102632201,"7. Aug. 2025","8. Aug. 2025","Heinz-Gerd Wrigge",ok,EUR,"Paid Online",225.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6689259402,"5. Aug. 2025","7. Aug. 2025","Abhiram Mamandur Kidambi",ok,EUR,"Paid Online",131.40,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,6125855871,"6. Aug. 2025","7. Aug. 2025","giorgio malavasi",ok,EUR,"Paid Online",65.70,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5908347323,"6. Aug. 2025","7. Aug. 2025","Annette Steffan",ok,EUR,"Paid Online",71.00,"14. Aug. 2025",w2XYu0zclW8XiV3A
+Buchung,5029572671,"5. Aug. 2025","7. Aug. 2025","Elitsa Seidel",ok,EUR,"Paid Online",230.40,"14. Aug. 2025",w2XYu0zclW8XiV3A

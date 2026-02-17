@@ -1,0 +1,32 @@
+Type,"Reference number",Check-in,Checkout,"Guest name","Reservation status",Currency,"Payment status",Amount,"Payout date","Payout ID"
+Reservation,5299782430,"27 May 2025","28 May 2025","Dirk Henning",ok,EUR,"Paid Online",68.40,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,5067542640,"27 May 2025","28 May 2025","Brian Krause",ok,EUR,"Paid Online",194.40,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4808750978,"26 May 2025","28 May 2025","Hans-Matthias Kube",ok,EUR,"Paid Online",223.20,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4335863481,"27 May 2025","28 May 2025","Martin Uittenbogaard",ok,EUR,"Paid Online",97.20,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4314891848,"26 May 2025","28 May 2025","Jay Ambrose",ok,EUR,"Paid Online",143.10,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,6037803746,"26 May 2025","27 May 2025","Kevin Flierl",ok,EUR,"Paid Online",70.20,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4853182831,"23 May 2025","27 May 2025","Irmgard Hackfort",ok,EUR,"Paid Online",427.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4941250215,"25 May 2025","26 May 2025","Ayshan Mammadova",ok,EUR,"Paid Online",65.70,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4843807370,"24 May 2025","26 May 2025","Anastasiia Sufranova",ok,EUR,"Paid Online",202.50,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4678619016,"25 May 2025","26 May 2025","Business Travel",ok,EUR,"Paid Online",87.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4388987501,"23 May 2025","26 May 2025","Andreas Leschniowski",ok,EUR,"Paid Online",422.10,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4985880173,"23 May 2025","25 May 2025","Daniel Elliott",ok,EUR,"Paid Online",1712.02,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4769329780,"24 May 2025","25 May 2025","Nadja Graf",ok,EUR,"Paid Online",273.60,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4591675557,"21 May 2025","25 May 2025","Christine FRANK",ok,EUR,"Paid Online",450.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4356699114,"24 May 2025","25 May 2025","Margret Colling",ok,EUR,"Paid Online",133.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4355900250,"24 May 2025","25 May 2025","Douglas Boast",ok,EUR,"Paid Online",126.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4640722326,"23 May 2025","24 May 2025","Helena Golla",ok,EUR,"Paid Online",90.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4609214711,"23 May 2025","24 May 2025","Thomas Leder",ok,EUR,"Paid Online",93.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4564640160,"22 May 2025","24 May 2025","Monika Golesne",ok,EUR,"Paid Online",175.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4534879054,"22 May 2025","24 May 2025","Juliane Eckstein",ok,EUR,"Paid Online",179.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4459111524,"18 May 2025","24 May 2025","Thilo Auer",ok,EUR,"Paid Online",684.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4374475609,"22 May 2025","24 May 2025","Ludger Krey",ok,EUR,"Paid Online",246.60,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4319973579,"23 May 2025","24 May 2025","Dagmar Dr. Thien",ok,EUR,"Paid Online",106.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4756604852,"22 May 2025","23 May 2025","Minh Ánh Đào",ok,EUR,"Paid Online",82.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4531103674,"21 May 2025","23 May 2025","Alessandra Guaran",ok,EUR,"Paid Online",251.10,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4396233800,"18 May 2025","23 May 2025","Morten Rolsdorph",ok,EUR,"Paid Online",569.70,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4921363906,"21 May 2025","22 May 2025","Annika Lambertz",ok,EUR,"Paid Online",109.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4871914461,"21 May 2025","22 May 2025","Tetsuya Yonezawa",ok,EUR,"Paid Online",340.20,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4808188537,"20 May 2025","22 May 2025","BHM Ingenieure Engineering &amp; Consulting GmbH",ok,EUR,"Paid Online",711.00,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4419981132,"21 May 2025","22 May 2025","Michael Furger",ok,EUR,"Paid Online",164.70,"29 May 2025",4jPh9mtKJ9ZfHDDE
+Reservation,4356644951,"21 May 2025","22 May 2025","Tristan Nicke",ok,EUR,"Paid Online",165.00,"29 May 2025",4jPh9mtKJ9ZfHDDE

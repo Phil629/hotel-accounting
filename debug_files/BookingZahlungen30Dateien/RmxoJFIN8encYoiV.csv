@@ -1,0 +1,40 @@
+Art,Referenznummer,Check-in,Checkout,"Name des Gastes",Buchungsstatus,Währung,Zahlungsstatus,Betrag,"Datum der Auszahlung",Auszahlungsnummer
+Buchung,6435553482,"1. Juli 2025","2. Juli 2025","Lech Baczek",ok,EUR,"Paid Online",110.75,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5426274585,"30. Juni 2025","2. Juli 2025","Rene Keet",ok,EUR,"Paid Online",185.27,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5209290105,"1. Juli 2025","2. Juli 2025","Hundt Judith",ok,EUR,"Paid Online",115.92,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6446503331,"30. Juni 2025","1. Juli 2025","Randolf Jessl",ok,EUR,"Paid Online",78.66,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5231653814,"30. Juni 2025","1. Juli 2025","Nilzén Emil",ok,EUR,"Paid Online",74.52,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6615559360,"29. Juni 2025","30. Juni 2025","Fabián Roberto Vega",ok,EUR,"Paid Online",75.56,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6143209345,"29. Juni 2025","30. Juni 2025","Andreas Schmidt",ok,EUR,"Paid Online",79.35,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6791005007,"26. Juni 2025","29. Juni 2025","Germany Hub",ok,EUR,"Paid Online",446.35,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6490473064,"28. Juni 2025","29. Juni 2025","Peter van Dongen",ok,EUR,"Paid Online",118.45,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6438319735,"28. Juni 2025","29. Juni 2025","Deborah Streather",ok,EUR,"Paid Online",118.45,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6170199532,"28. Juni 2025","29. Juni 2025","Patrick Maier",ok,EUR,"Paid Online",112.82,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5977285128,"26. Juni 2025","29. Juni 2025","Ingo Ingensand",ok,EUR,"Paid Online",507.38,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5729299205,"28. Juni 2025","29. Juni 2025","ASuSS GmbH",ok,EUR,"Paid Online",236.90,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5729200686,"28. Juni 2025","29. Juni 2025","Stella Stein",ok,EUR,"Paid Online",107.64,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5655542221,"28. Juni 2025","29. Juni 2025","Willibald Lechner",ok,EUR,"Paid Online",140.76,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5284239168,"28. Juni 2025","29. Juni 2025","keona schroff",ok,EUR,"Paid Online",107.64,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5254694292,"28. Juni 2025","29. Juni 2025","Christian Reid",ok,EUR,"Paid Online",107.64,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5116893746,"28. Juni 2025","29. Juni 2025","Moritz Franke",ok,EUR,"Paid Online",103.50,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5012479303,"27. Juni 2025","29. Juni 2025","Stephan Schäfer",ok,EUR,"Paid Online",344.48,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4965829358,"28. Juni 2025","29. Juni 2025","Hannah Landhäußer",ok,EUR,"Paid Online",148.50,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4957159269,"28. Juni 2025","29. Juni 2025","Alexander Höck",ok,EUR,"Paid Online",155.70,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4756296210,"28. Juni 2025","29. Juni 2025","Tina Müller",ok,EUR,"Paid Online",351.93,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4747754937,"27. Juni 2025","29. Juni 2025","Marlies Lölgen",ok,EUR,"Paid Online",261.90,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4706137428,"28. Juni 2025","29. Juni 2025","Silvia Luczak",ok,EUR,"Paid Online",238.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4479553814,"28. Juni 2025","29. Juni 2025","Nicole Gröschl-Jost",cancelled,EUR,"Paid Online",-132.90,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4996826028,"27. Juni 2025","28. Juni 2025","Cordula Gehlert-Wohlfahrt",ok,EUR,"Paid Online",109.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4452484477,"27. Juni 2025","28. Juni 2025","Berivan Kurt",ok,EUR,"Paid Online",138.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4411364061,"27. Juni 2025","28. Juni 2025","Philipp Bürkle",ok,EUR,"Paid Online",131.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6518704513,"25. Juni 2025","27. Juni 2025","Giuseppe Ruoso",ok,EUR,"Paid Online",318.60,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6510132273,"24. Juni 2025","27. Juni 2025","Eidgenoessisches Institut fuer Metrologie",ok,EUR,"Paid Online",464.40,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6312170170,"26. Juni 2025","27. Juni 2025","Klaus Herrmann-Herms",ok,EUR,"Paid Online",117.90,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6174054205,"23. Juni 2025","27. Juni 2025","Aaron Tong",ok,EUR,"Paid Online",555.30,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5430089080,"26. Juni 2025","27. Juni 2025","Laura Wolz",ok,EUR,"Paid Online",147.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6588331679,"25. Juni 2025","26. Juni 2025","Sabine Braun",ok,EUR,"Paid Online",209.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6378826875,"23. Juni 2025","26. Juni 2025","Helen Smith",ok,EUR,"Paid Online",580.50,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6206457393,"24. Juni 2025","26. Juni 2025","Natálie Bolek Švachová",ok,EUR,"Paid Online",714.00,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,6138577431,"23. Juni 2025","26. Juni 2025","Benoit Hurtel",ok,EUR,"Paid Online",981.96,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,5380944666,"23. Juni 2025","26. Juni 2025","Heekyung Lee",ok,EUR,"Paid Online",592.20,"3. Juli 2025",RmxoJFIN8encYoiV
+Buchung,4713658723,"22. Juni 2025","26. Juni 2025","DATAO WANG",ok,EUR,"Paid Online",459.90,"3. Juli 2025",RmxoJFIN8encYoiV

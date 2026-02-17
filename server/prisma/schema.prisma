@@ -1,0 +1,115 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Invoice {
+  id                Int      @id @default(autoincrement())
+  invoiceDate       DateTime
+  paymentType       String   // e.g., "Banküberweisung", "Booking.com"
+  invoiceNumber     String   @unique // e.g., "Rechnung 17841 / 2025"
+  recipient         String
+  amount            Float
+  
+  // Reconciliation Status
+  isReconciled      Boolean  @default(false)
+  reconciledDate    DateTime?
+  manualStatus      Boolean  @default(false) // Manually checked off
+  comment           String?
+
+  // Dunning / Reminder
+  dunningStatus     String?  // "Reminder", "Warning 1", "Warning 2"
+  dunningMethod     String?  // "Email", "Post"
+  dunningDate       DateTime?
+
+  // Relations
+  matches           ReconciliationMatch[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BankTransaction {
+  id                Int      @id @default(autoincrement())
+  bookingDate       DateTime
+  amount            Float
+  currency          String   @default("EUR")
+  senderReceiver    String?
+  description       String?  // Verwendungszweck
+  
+  // Relations
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BookingPayment {
+  id                Int      @id @default(autoincrement())
+  referenceNumber   String   @unique
+  checkInDate       DateTime
+  checkOutDate      DateTime
+  payoutDate        DateTime
+  amount            Float
+  currency          String   @default("EUR")
+  
+  // Relations
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CardPayment {
+  id                Int      @id @default(autoincrement())
+  transactionDate   DateTime
+  cardType          String   // e.g., "Visa", "Mastercard"
+  amount            Float
+  grossAmount       Float?
+  
+  // Relations
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ReconciliationMatch {
+  id                Int      @id @default(autoincrement())
+  invoiceId         Int
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id])
+  
+  // Polymorphic-like relation (one of these should be set)
+  bankTransactionId Int?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  
+  bookingPaymentId  Int?
+  bookingPayment    BookingPayment? @relation(fields: [bookingPaymentId], references: [id])
+  
+  cardPaymentId     Int?
+  cardPayment       CardPayment? @relation(fields: [cardPaymentId], references: [id])
+  
+  matchType         String   // "AUTOMATIC", "MANUAL"
+  confidence        Float?   // 1.0 for exact match
+  
+  createdAt         DateTime @default(now())
+}
+
+model ImportedFile {
+  id                Int      @id @default(autoincrement())
+  filename          String
+  originalName      String
+  type              String   // "IBELSA", "BOOKING", "BANK", "NEXI"
+  importDate        DateTime @default(now())
+  recordCount       Int
+  dateRangeStart    DateTime?
+  dateRangeEnd      DateTime?
+  logs              String?  // JSON string of debug logs
+}

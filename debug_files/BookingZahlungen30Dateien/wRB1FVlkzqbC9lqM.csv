@@ -1,0 +1,16 @@
+Art,Referenznummer,Check-in,Checkout,"Name des Gastes",Buchungsstatus,Währung,Zahlungsstatus,Betrag,"Datum der Auszahlung",Auszahlungsnummer
+Buchung,6108108268,"9. Sept. 2025","10. Sept. 2025","Paul Beck",ok,EUR,"Paid Online",319.80,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5626829784,"9. Sept. 2025","10. Sept. 2025","Tobias Dück",ok,EUR,"Paid Online",257.40,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5614066796,"8. Sept. 2025","10. Sept. 2025","Marzia Bordone",ok,EUR,"Paid Online",338.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5276762067,"8. Sept. 2025","10. Sept. 2025","Dirk Henrich",ok,EUR,"Paid Online",374.40,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5882133070,"7. Sept. 2025","8. Sept. 2025","JONGIL PARK",ok,EUR,"Paid Online",175.50,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,4457277490,"6. Sept. 2025","8. Sept. 2025","Andreas Erich Farr",ok,EUR,"Paid Online",884.76,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,6293366235,"5. Sept. 2025","7. Sept. 2025","Birgit Gerloff",ok,EUR,"Paid Online",360.10,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,6164625592,"4. Sept. 2025","7. Sept. 2025","konrad scherthan",ok,EUR,"Paid Online",859.10,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,4539217186,"4. Sept. 2025","7. Sept. 2025","Patricia Kirchner",ok,EUR,"Paid Online",728.40,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,6926561910,"4. Sept. 2025","6. Sept. 2025","Niels Becker",ok,EUR,"Paid Online",193.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5654874638,"5. Sept. 2025","6. Sept. 2025","Hubert Nuss",ok,EUR,"Paid Online",100.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5109010563,"5. Sept. 2025","6. Sept. 2025","Herbert Schilling",ok,EUR,"Paid Online",101.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,6230068181,"2. Sept. 2025","5. Sept. 2025","Ursula Riedel",ok,EUR,"Paid Online",264.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5438516830,"4. Sept. 2025","5. Sept. 2025","Tarek Badran",ok,EUR,"Paid Online",95.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM
+Buchung,5068403915,"4. Sept. 2025","5. Sept. 2025","Mohammed Almousa",ok,EUR,"Paid Online",86.00,"11. Sept. 2025",wRB1FVlkzqbC9lqM

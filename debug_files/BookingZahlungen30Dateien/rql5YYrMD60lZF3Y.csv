@@ -1,0 +1,50 @@
+Art,Referenznummer,Check-in,Checkout,"Name des Gastes",Buchungsstatus,Währung,Zahlungsstatus,Betrag,"Datum der Auszahlung",Auszahlungsnummer
+Buchung,6966312696,"5. Aug. 2025","6. Aug. 2025","Arash Mamedi",ok,EUR,"Paid Online",73.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6843155431,"4. Aug. 2025","6. Aug. 2025","Alessandro Di Blasi",ok,EUR,"Paid Online",163.80,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6715237921,"5. Aug. 2025","6. Aug. 2025","Susanna Bates",ok,EUR,"Paid Online",76.50,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6536138385,"4. Aug. 2025","6. Aug. 2025","Bernd Haase",ok,EUR,"Paid Online",191.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6352039329,"5. Aug. 2025","6. Aug. 2025","Tarek Badran",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6107278929,"5. Aug. 2025","6. Aug. 2025","Calum Thomson",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6808550695,"3. Aug. 2025","5. Aug. 2025","Andreas Metzger",ok,EUR,"Paid Online",139.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6101164769,"4. Aug. 2025","5. Aug. 2025","Paul Röthlisberger",ok,EUR,"Paid Online",94.50,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5711511735,"3. Aug. 2025","5. Aug. 2025","Toshikazu Ono",ok,EUR,"Paid Online",131.40,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5092883273,"3. Aug. 2025","5. Aug. 2025","Andreas Metzger",cancelled,EUR,"Paid Online",139.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6793774396,"3. Aug. 2025","4. Aug. 2025","Moritz Brüning",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6174577640,"1. Aug. 2025","4. Aug. 2025","Mirimanyan Abetisyan Siranush",ok,EUR,"Paid Online",222.30,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5903621490,"3. Aug. 2025","4. Aug. 2025","Andrea Hessenauer",ok,EUR,"Paid Online",94.50,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5554510742,"2. Aug. 2025","4. Aug. 2025","Rey David Duran",ok,EUR,"Paid Online",198.90,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5509544761,"2. Aug. 2025","4. Aug. 2025","Andreas Wiendieck-Ernst",ok,EUR,"Paid Online",137.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5349670817,"3. Aug. 2025","4. Aug. 2025","Miguel Sousa Rua",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5103536112,"3. Aug. 2025","4. Aug. 2025","Tapati Roy",ok,EUR,"Paid Online",71.10,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6999167255,"1. Aug. 2025","3. Aug. 2025","Demetrius Hale",ok,EUR,"Paid Online",144.65,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6820012771,"2. Aug. 2025","3. Aug. 2025","Marion Heuschkel",ok,EUR,"Paid Online",75.60,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6128519136,"2. Aug. 2025","3. Aug. 2025","Кобжив Андрей",ok,EUR,"Paid Online",142.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6101167851,"2. Aug. 2025","3. Aug. 2025","Tasnim Barawi",ok,EUR,"Paid Online",75.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6008435558,"2. Aug. 2025","3. Aug. 2025","Anne Schlaf",ok,EUR,"Paid Online",72.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5959828852,"2. Aug. 2025","3. Aug. 2025","Jiewu Yang",ok,EUR,"Paid Online",111.60,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5572266536,"1. Aug. 2025","3. Aug. 2025","Ursula Heins Marroquin",ok,EUR,"Paid Online",162.90,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5360821924,"2. Aug. 2025","3. Aug. 2025","Anton Weinig",ok,EUR,"Paid Online",75.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,4548980478,"1. Aug. 2025","3. Aug. 2025","Vincent McLoughlin",ok,EUR,"Paid Online",734.40,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6930802706,"1. Aug. 2025","2. Aug. 2025","子琉(SHIRYU) 長沼(NAGANUMA)",ok,EUR,"Paid Online",72.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6850846853,"1. Aug. 2025","2. Aug. 2025","Victoria Becker",ok,EUR,"Paid Online",72.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6660585381,"1. Aug. 2025","2. Aug. 2025","Kevin Nepke",ok,EUR,"Paid Online",72.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6268686323,"31. Juli 2025","2. Aug. 2025","Helga Kuegler",ok,EUR,"Paid Online",137.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6100635153,"1. Aug. 2025","2. Aug. 2025","Mihail Dalaban",ok,EUR,"Paid Online",115.20,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5898147021,"1. Aug. 2025","2. Aug. 2025","Gerald Maurer",ok,EUR,"Paid Online",89.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5540757636,"1. Aug. 2025","2. Aug. 2025","Mariela PESCHKE",ok,EUR,"Paid Online",80.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6843231677,"31. Juli 2025","1. Aug. 2025","Katie Jones",ok,EUR,"Paid Online",75.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6757997509,"31. Juli 2025","1. Aug. 2025","ELISABETH TRIAS",ok,EUR,"Paid Online",67.50,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6600785701,"31. Juli 2025","1. Aug. 2025","marco sabatini",ok,EUR,"Paid Online",94.50,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6353590896,"31. Juli 2025","1. Aug. 2025","Arash Mamedi",ok,EUR,"Paid Online",75.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6190150872,"31. Juli 2025","1. Aug. 2025","Ronja Ollfisch",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5875310949,"31. Juli 2025","1. Aug. 2025","Christian Naumann",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5835737299,"30. Juli 2025","1. Aug. 2025","Miguel Sousa Rua",ok,EUR,"Paid Online",131.40,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5827620380,"29. Juli 2025","1. Aug. 2025","Ken Huth",ok,EUR,"Paid Online",197.10,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5240341618,"31. Juli 2025","1. Aug. 2025","Francisco Armenteros Caballero",ok,EUR,"Paid Online",116.10,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6703935854,"29. Juli 2025","31. Juli 2025","Benjamin Talley",ok,EUR,"Paid Online",146.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6667069294,"29. Juli 2025","31. Juli 2025","Jonas Nalop",ok,EUR,"Paid Online",182.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,6278515795,"30. Juli 2025","31. Juli 2025","Siegfried Hauser",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5809928250,"30. Juli 2025","31. Juli 2025","Sahibi Obaid",ok,EUR,"Paid Online",65.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5672903275,"30. Juli 2025","31. Juli 2025","Christian Knauer",ok,EUR,"Paid Online",82.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5284656295,"30. Juli 2025","31. Juli 2025","Ulrich Pischke",ok,EUR,"Paid Online",74.70,"7. Aug. 2025",rql5YYrMD60lZF3Y
+Buchung,5074368722,"30. Juli 2025","31. Juli 2025","Lisa Person",ok,EUR,"Paid Online",73.00,"7. Aug. 2025",rql5YYrMD60lZF3Y
