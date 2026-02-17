@@ -14,6 +14,8 @@ function App() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!supabase) return;
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setLoading(false);
@@ -33,8 +35,24 @@ function App() {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await supabase?.auth.signOut();
   };
+
+  if (!supabase) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 flex-col p-4">
+        <h1 className="text-xl font-bold text-red-600 mb-2">Konfigurationsfehler</h1>
+        <p className="text-gray-700 mb-4">Die Verbindung zu Supabase konnte nicht hergestellt werden.</p>
+        <div className="bg-white p-4 rounded shadow text-left text-sm font-mono text-gray-600">
+          <p className="mb-2">Bitte prüfen Sie die Environment Variables in Netlify:</p>
+          <ul className="list-disc pl-5 space-y-1">
+            <li>VITE_SUPABASE_URL</li>
+            <li>VITE_SUPABASE_ANON_KEY</li>
+          </ul>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return <div className="min-h-screen flex items-center justify-center">Loading...</div>;

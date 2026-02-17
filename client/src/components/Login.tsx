@@ -17,6 +17,12 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         setLoading(true);
         setError(null);
 
+        if (!supabase) {
+            setError('Supabase client not initialized');
+            setLoading(false);
+            return;
+        }
+
         const { error } = await supabase.auth.signInWithPassword({
             email,
             password,
