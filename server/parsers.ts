@@ -184,24 +184,21 @@ async function parseBooking(content: string): Promise<ParsedData> {
             let minDate: Date | null = null;
             let maxDate: Date | null = null;
 
-            // 2. Process Data Rows (starting from index 1)
+            // 2. Collect all data in memory first
+            const upsertOps: any[] = [];
             for (let i = 1; i < records.length; i++) {
                 const row = records[i];
                 try {
-                    // Use dynamic indices
                     const ref = row[colMap.ref];
                     const checkIn = colMap.checkIn > -1 ? parseDate(row[colMap.checkIn]) : null;
                     const checkOut = colMap.checkOut > -1 ? parseDate(row[colMap.checkOut]) : null;
                     const amount = parseAmount(row[colMap.amount]);
                     const payoutDate = colMap.payout > -1 ? parseDate(row[colMap.payout]) : null;
 
-                    if (!ref) continue; // Skip empty lines
+                    if (!ref || !amount) continue;
 
-                    // If payout date is missing, try to infer or just skip date range update for it
-                    // But we need at least some dates for reconciliation
-
-                    if (ref && amount) {
-                        await prisma.bookingPayment.upsert({
+                    upsertOps.push(
+                        prisma.bookingPayment.upsert({
                             where: { referenceNumber: ref },
                             update: {
                                 checkInDate: checkIn || undefined,
@@ -211,25 +208,30 @@ async function parseBooking(content: string): Promise<ParsedData> {
                             },
                             create: {
                                 referenceNumber: ref,
-                                checkInDate: checkIn || new Date(0), // Fallback if missing
+                                checkInDate: checkIn || new Date(0),
                                 checkOutDate: checkOut || new Date(0),
                                 payoutDate: payoutDate || new Date(0),
                                 amount: amount
                             }
-                        });
-                        count++;
+                        })
+                    );
+                    count++;
 
-                        if (checkIn) {
-                            if (!minDate || checkIn < minDate) minDate = checkIn;
-                        }
-                        if (payoutDate) {
-                            if (!maxDate || payoutDate > maxDate) maxDate = payoutDate;
-                        }
+                    if (checkIn) {
+                        if (!minDate || checkIn < minDate) minDate = checkIn;
+                    }
+                    if (payoutDate) {
+                        if (!maxDate || payoutDate > maxDate) maxDate = payoutDate;
                     }
                 } catch (e) {
                     console.error("Error parsing booking row", row, e);
                     logs.push(`Error parsing row ${i}: ${e}`);
                 }
+            }
+
+            // 3. Execute all upserts in a single transaction
+            if (upsertOps.length > 0) {
+                await prisma.$transaction(upsertOps);
             }
             resolve({ type: 'BOOKING', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined, logs });
         });
@@ -245,6 +247,7 @@ async function parseIbelsa(content: string): Promise<ParsedData> {
             let count = 0;
             let minDate: Date | null = null;
             let maxDate: Date | null = null;
+            const upsertOps: any[] = [];
 
             for (const row of records) {
                 try {
@@ -255,26 +258,30 @@ async function parseIbelsa(content: string): Promise<ParsedData> {
                     const amount = parseAmount(row[5]);
 
                     if (date && number) {
-                        await prisma.invoice.upsert({
-                            where: { invoiceNumber: number },
-                            update: {},
-                            create: {
-                                invoiceDate: date,
-                                paymentType: type,
-                                invoiceNumber: number,
-                                recipient: recipient,
-                                amount: amount
-                            }
-                        });
+                        upsertOps.push(
+                            prisma.invoice.upsert({
+                                where: { invoiceNumber: number },
+                                update: {},
+                                create: {
+                                    invoiceDate: date,
+                                    paymentType: type,
+                                    invoiceNumber: number,
+                                    recipient: recipient,
+                                    amount: amount
+                                }
+                            })
+                        );
                         count++;
-                        if (date) {
-                            if (!minDate || date < minDate) minDate = date;
-                            if (!maxDate || date > maxDate) maxDate = date;
-                        }
+                        if (!minDate || date < minDate) minDate = date;
+                        if (!maxDate || date > maxDate) maxDate = date;
                     }
                 } catch (e) {
                     console.error("Error parsing Ibelsa row", row, e);
                 }
+            }
+
+            if (upsertOps.length > 0) {
+                await prisma.$transaction(upsertOps);
             }
             resolve({ type: 'IBELSA', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
         });
@@ -290,6 +297,7 @@ async function parseBank(content: string): Promise<ParsedData> {
             let count = 0;
             let minDate: Date | null = null;
             let maxDate: Date | null = null;
+            const createData: any[] = [];
 
             for (const row of records) {
                 try {
@@ -299,23 +307,23 @@ async function parseBank(content: string): Promise<ParsedData> {
                     const amount = parseAmount(row[11]);
 
                     if (date) {
-                        await prisma.bankTransaction.create({
-                            data: {
-                                bookingDate: date,
-                                senderReceiver: name,
-                                description: desc,
-                                amount: amount
-                            }
+                        createData.push({
+                            bookingDate: date,
+                            senderReceiver: name,
+                            description: desc,
+                            amount: amount
                         });
                         count++;
-                        if (date) {
-                            if (!minDate || date < minDate) minDate = date;
-                            if (!maxDate || date > maxDate) maxDate = date;
-                        }
+                        if (!minDate || date < minDate) minDate = date;
+                        if (!maxDate || date > maxDate) maxDate = date;
                     }
                 } catch (e) {
                     console.error("Error parsing Bank row", row, e);
                 }
+            }
+
+            if (createData.length > 0) {
+                await prisma.bankTransaction.createMany({ data: createData });
             }
             resolve({ type: 'BANK', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
         });
@@ -338,12 +346,10 @@ async function parseNexi(content: string): Promise<ParsedData> {
             let count = 0;
             let minDate: Date | null = null;
             let maxDate: Date | null = null;
+            const createData: any[] = [];
 
             for (const row of records) {
                 try {
-                    // Standard Nexi: Type(1), Date(2), Amount(9), Gross(10)
-                    // But if delimiter is wrong, row might have length 1
-
                     if (row.length < 3) {
                         console.warn("Skipping Nexi row, too few columns:", row);
                         continue;
@@ -352,35 +358,33 @@ async function parseNexi(content: string): Promise<ParsedData> {
                     const type = row[1];
                     const date = parseDate(row[2]);
 
-                    // Actual Nexi format: Zahlbetrag(10), Umsatz Brutto(11)
                     let amount = parseAmount(row[10]);
                     let gross = parseAmount(row[11]);
 
-                    // For credit cards (Mastercard/Visa), column 10 is empty, use column 11 for both
                     if (amount === 0 && gross > 0) {
                         amount = gross;
                     }
 
                     if (date) {
-                        await prisma.cardPayment.create({
-                            data: {
-                                transactionDate: date,
-                                cardType: type,
-                                amount: amount,
-                                grossAmount: gross
-                            }
+                        createData.push({
+                            transactionDate: date,
+                            cardType: type,
+                            amount: amount,
+                            grossAmount: gross
                         });
                         count++;
-                        if (date) {
-                            if (!minDate || date < minDate) minDate = date;
-                            if (!maxDate || date > maxDate) maxDate = date;
-                        }
+                        if (!minDate || date < minDate) minDate = date;
+                        if (!maxDate || date > maxDate) maxDate = date;
                     } else {
                         console.warn("Nexi row skipped, invalid date:", row[2]);
                     }
                 } catch (e) {
                     console.error("Error parsing Nexi row", row, e);
                 }
+            }
+
+            if (createData.length > 0) {
+                await prisma.cardPayment.createMany({ data: createData });
             }
             resolve({ type: 'NEXI', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
         });
