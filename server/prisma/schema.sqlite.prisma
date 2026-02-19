@@ -1,0 +1,106 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/sqlite"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:../dev.db"
+}
+
+model Invoice {
+  id                Int      @id @default(autoincrement())
+  invoiceDate       DateTime
+  paymentType       String
+  invoiceNumber     String   @unique
+  recipient         String
+  amount            Float
+  
+  isReconciled      Boolean  @default(false)
+  reconciledDate    DateTime?
+  manualStatus      Boolean  @default(false)
+  comment           String?
+
+  dunningStatus     String?
+  dunningMethod     String?
+  dunningDate       DateTime?
+
+  matches           ReconciliationMatch[]
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BankTransaction {
+  id                Int      @id @default(autoincrement())
+  bookingDate       DateTime
+  amount            Float
+  currency          String   @default("EUR")
+  senderReceiver    String?
+  description       String?
+  
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model BookingPayment {
+  id                Int      @id @default(autoincrement())
+  referenceNumber   String   @unique
+  checkInDate       DateTime
+  checkOutDate      DateTime
+  payoutDate        DateTime
+  amount            Float
+  currency          String   @default("EUR")
+  
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model CardPayment {
+  id                Int      @id @default(autoincrement())
+  transactionDate   DateTime
+  cardType          String
+  amount            Float
+  grossAmount       Float?
+  
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model ReconciliationMatch {
+  id                Int      @id @default(autoincrement())
+  invoiceId         Int
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id])
+  
+  bankTransactionId Int?
+  bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
+  
+  bookingPaymentId  Int?
+  bookingPayment    BookingPayment? @relation(fields: [bookingPaymentId], references: [id])
+  
+  cardPaymentId     Int?
+  cardPayment       CardPayment? @relation(fields: [cardPaymentId], references: [id])
+  
+  matchType         String
+  confidence        Float?
+  
+  createdAt         DateTime @default(now())
+}
+
+model ImportedFile {
+  id                Int      @id @default(autoincrement())
+  filename          String
+  originalName      String
+  type              String
+  importDate        DateTime @default(now())
+  recordCount       Int
+  dateRangeStart    DateTime?
+  dateRangeEnd      DateTime?
+  logs              String?
+}
