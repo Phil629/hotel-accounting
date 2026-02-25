@@ -14,11 +14,24 @@ export async function runReconciliation() {
     console.log("Starting reconciliation...");
 
     // 1. Load ALL data in a single batch (instead of per-invoice queries)
+    // Only load payments from last 9 months to keep memory usage low
+    const nineMonthsAgo = new Date();
+    nineMonthsAgo.setMonth(nineMonthsAgo.getMonth() - 9);
+
     const [invoices, bookingPayments, cardPayments, bankTransactions] = await Promise.all([
         prisma.invoice.findMany({ where: { isReconciled: false } }),
-        prisma.bookingPayment.findMany({ include: { matches: { select: { id: true } } } }),
-        prisma.cardPayment.findMany({ include: { matches: { select: { id: true } } } }),
-        prisma.bankTransaction.findMany({ include: { matches: { select: { id: true } } } })
+        prisma.bookingPayment.findMany({
+            where: { checkInDate: { gte: nineMonthsAgo } },
+            include: { matches: { select: { id: true } } }
+        }),
+        prisma.cardPayment.findMany({
+            where: { transactionDate: { gte: nineMonthsAgo } },
+            include: { matches: { select: { id: true } } }
+        }),
+        prisma.bankTransaction.findMany({
+            where: { bookingDate: { gte: nineMonthsAgo } },
+            include: { matches: { select: { id: true } } }
+        })
     ]);
 
     console.log(`Loaded: ${invoices.length} unreconciled invoices, ${bookingPayments.length} booking payments, ${cardPayments.length} card payments, ${bankTransactions.length} bank transactions`);

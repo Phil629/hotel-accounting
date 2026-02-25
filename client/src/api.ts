@@ -70,6 +70,13 @@ export const api = {
         return res.json();
     },
 
+    async deleteMonth(month: string) {
+        // month format: YYYY-MM
+        const res = await fetch(`${API_URL}/invoices/by-month?month=${month}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error('Failed to delete month');
+        return res.json();
+    },
+
     async getImportStatus() {
         const res = await fetch(`${API_URL}/import-status`);
         if (!res.ok) throw new Error('Failed to fetch import status');

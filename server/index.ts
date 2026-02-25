@@ -245,10 +245,24 @@ app.post('/api/reconcile', async (req, res) => {
     }
 });
 
-// Get Invoices
+// Get Invoices — smart loading: last 4 months + any older month with open invoices
 app.get('/api/invoices', async (req, res) => {
     try {
+        // Calculate cutoff: start of the month 4 months ago
+        const cutoff = new Date();
+        cutoff.setMonth(cutoff.getMonth() - 3);
+        cutoff.setDate(1);
+        cutoff.setHours(0, 0, 0, 0);
+
         const invoices = await prisma.invoice.findMany({
+            where: {
+                OR: [
+                    // Always load last 4 months
+                    { invoiceDate: { gte: cutoff } },
+                    // Also load older invoices that are still open
+                    { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false }
+                ]
+            },
             include: {
                 matches: {
                     include: {
@@ -264,6 +278,42 @@ app.get('/api/invoices', async (req, res) => {
     } catch (error) {
         console.error('Error fetching invoices:', error);
         res.status(500).json({ error: 'Failed to fetch invoices', details: String(error) });
+    }
+});
+
+// Delete invoices by month (e.g. month=2025-10)
+app.delete('/api/invoices/by-month', async (req, res) => {
+    const { month } = req.query; // format: YYYY-MM
+    if (!month || typeof month !== 'string') {
+        return res.status(400).json({ error: 'month query param required (YYYY-MM)' });
+    }
+    try {
+        const [year, mon] = month.split('-').map(Number);
+        const start = new Date(year, mon - 1, 1);
+        const end = new Date(year, mon, 1); // first day of next month
+
+        // Find invoices in that month
+        const invoicesToDelete = await prisma.invoice.findMany({
+            where: { invoiceDate: { gte: start, lt: end } },
+            select: { id: true }
+        });
+        const ids = invoicesToDelete.map(i => i.id);
+
+        // Delete matches first (FK constraint), then invoices
+        await prisma.reconciliationMatch.deleteMany({ where: { invoiceId: { in: ids } } });
+        await prisma.invoice.deleteMany({ where: { id: { in: ids } } });
+
+        // Also remove imported files for that month
+        await prisma.importedFile.deleteMany({
+            where: {
+                dateRangeStart: { gte: start, lt: end }
+            }
+        });
+
+        res.json({ success: true, deleted: ids.length });
+    } catch (error) {
+        console.error('Error deleting month:', error);
+        res.status(500).json({ error: 'Failed to delete month' });
     }
 });
 
@@ -331,7 +381,7 @@ app.post('/api/invoices/:id/dunning', async (req, res) => {
     }
 });
 
-// Clear Database (Dev/Test only)
+// Clear entire Database
 app.delete('/api/clear-db', async (req, res) => {
     try {
         console.log('Clearing database via API...');

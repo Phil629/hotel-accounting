@@ -258,6 +258,7 @@ async function parseIbelsa(content: string): Promise<ParsedData> {
                     const amount = parseAmount(row[5]);
 
                     if (date && number) {
+                        const isCash = type?.toLowerCase() === 'bar';
                         upsertOps.push(
                             prisma.invoice.upsert({
                                 where: { invoiceNumber: number },
@@ -267,7 +268,11 @@ async function parseIbelsa(content: string): Promise<ParsedData> {
                                     paymentType: type,
                                     invoiceNumber: number,
                                     recipient: recipient,
-                                    amount: amount
+                                    amount: amount,
+                                    // Bar (cash) payments are auto-reconciled — no matching needed
+                                    isReconciled: isCash,
+                                    manualStatus: isCash,
+                                    reconciledDate: isCash ? new Date() : null
                                 }
                             })
                         );

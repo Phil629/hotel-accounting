@@ -25,11 +25,15 @@ type SortDirection = 'asc' | 'desc';
 export const Dashboard: React.FC = () => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(false);
+    const [reconciling, setReconciling] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [sortField, setSortField] = useState<SortField>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null);
     const [importStatus, setImportStatus] = useState<Record<string, any[]>>({});
+    const [showDeleteModal, setShowDeleteModal] = useState(false);
+    const [selectedMonthsToDelete, setSelectedMonthsToDelete] = useState<Set<string>>(new Set());
+    const [deleting, setDeleting] = useState(false);
 
     const showToast = (message: string, type: 'success' | 'error' | 'info') => {
         setToast({ message, type });
@@ -69,15 +73,15 @@ export const Dashboard: React.FC = () => {
     }, []);
 
     const handleReconcile = async () => {
-        setLoading(true);
+        setReconciling(true);
         try {
             const res = await api.reconcile();
-            showToast(`Reconciliation complete! Matched: ${res.matches}`, 'success');
+            showToast(`Abgleich abgeschlossen! ${res.matches} Rechnungen zugeordnet.`, 'success');
             fetchInvoices();
         } catch (e) {
-            showToast('Reconciliation failed', 'error');
+            showToast('Abgleich fehlgeschlagen', 'error');
         } finally {
-            setLoading(false);
+            setReconciling(false);
         }
     };
 
@@ -211,6 +215,25 @@ export const Dashboard: React.FC = () => {
         return groups;
     }, [filteredInvoices, searchTerm, statusFilter, sortInvoices]);
 
+    // Helper: convert German locale month name ("November 2025") to YYYY-MM string
+    const monthNameToYYYYMM = (monthName: string): string => {
+        // Parse using JS Date by constructing a date string
+        const d = new Date(`1 ${monthName}`);
+        if (!isNaN(d.getTime())) {
+            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        }
+        // Fallback: try German month names manually
+        const months: Record<string, string> = {
+            'Januar': '01', 'Februar': '02', 'März': '03', 'April': '04',
+            'Mai': '05', 'Juni': '06', 'Juli': '07', 'August': '08',
+            'September': '09', 'Oktober': '10', 'November': '11', 'Dezember': '12'
+        };
+        const parts = monthName.split(' ');
+        const month = months[parts[0]];
+        const year = parts[1];
+        return month && year ? `${year}-${month}` : '';
+    };
+
     // Sort months chronologically
     const sortedMonths = useMemo(() => {
         return Object.keys(groupedInvoices).sort((a, b) => {
@@ -219,6 +242,44 @@ export const Dashboard: React.FC = () => {
             return dateB.getTime() - dateA.getTime();
         });
     }, [groupedInvoices]);
+
+    // Compute per-month reconciliation status
+    const monthStatus = useMemo(() => {
+        const result: Record<string, { total: number; open: number; openSum: number; allDone: boolean }> = {};
+        for (const month of Object.keys(groupedInvoices)) {
+            const invs = groupedInvoices[month];
+            const open = invs.filter(i => !i.isReconciled && !i.manualStatus);
+            const openSum = open.reduce((sum, i) => sum + i.amount, 0);
+            result[month] = {
+                total: invs.length,
+                open: open.length,
+                openSum,
+                allDone: open.length === 0
+            };
+        }
+        return result;
+    }, [groupedInvoices]);
+
+    // Delete selected months
+    const handleDeleteMonths = async () => {
+        if (selectedMonthsToDelete.size === 0) return;
+        setDeleting(true);
+        try {
+            for (const month of selectedMonthsToDelete) {
+                const yyyymm = monthNameToYYYYMM(month);
+                await api.deleteMonth(yyyymm);
+            }
+            showToast(`${selectedMonthsToDelete.size} Monat(e) gelöscht.`, 'success');
+            setShowDeleteModal(false);
+            setSelectedMonthsToDelete(new Set());
+            fetchInvoices();
+            fetchImportStatus();
+        } catch (e) {
+            showToast('Löschen fehlgeschlagen', 'error');
+        } finally {
+            setDeleting(false);
+        }
+    };
 
     // Memoize the sorted list used for the "Search Results" view
     const sortedFilteredInvoices = useMemo(() => sortInvoices(filteredInvoices), [filteredInvoices, sortInvoices]);
@@ -298,26 +359,13 @@ export const Dashboard: React.FC = () => {
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <button
                         className="btn"
-                        onClick={async () => {
-                            if (confirm('Are you sure you want to delete ALL data? This cannot be undone.')) {
-                                setLoading(true);
-                                try {
-                                    await api.clearDatabase();
-                                    showToast('Database cleared!', 'success');
-                                    window.location.reload();
-                                } catch (e) {
-                                    showToast('Failed to clear database', 'error');
-                                } finally {
-                                    setLoading(false);
-                                }
-                            }
-                        }}
+                        onClick={() => setShowDeleteModal(true)}
                         style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}
                     >
-                        Clear Database
+                        Monat löschen
                     </button>
-                    <button className="btn btn-primary" onClick={handleReconcile} disabled={loading}>
-                        {loading ? 'Processing...' : 'Run Reconciliation'}
+                    <button className="btn btn-primary" onClick={handleReconcile} disabled={reconciling || loading}>
+                        {reconciling ? 'Läuft...' : 'Abgleich starten'}
                     </button>
                 </div>
             </div>
@@ -336,21 +384,26 @@ export const Dashboard: React.FC = () => {
                         const files = (importStatus as any)[month] || [];
                         const hasFiles = files.length > 0;
                         const fileListString = files.map((f: any) => `- ${f.originalName}`).join('\n');
+                        const ms = monthStatus[month];
+                        const allDone = ms?.allDone ?? false;
+                        const bgColor = selectedMonth === month
+                            ? 'var(--primary)'
+                            : allDone && hasFiles
+                                ? '#bbf7d0'   // green: all reconciled
+                                : hasFiles
+                                    ? '#fef3c7' // yellow: files uploaded but open invoices
+                                    : 'white';  // white: no files
 
                         return (
                             <button
                                 key={month}
                                 onClick={() => setSelectedMonth(month)}
-                                title={fileListString} // Simple native tooltip
+                                title={fileListString}
                                 style={{
                                     padding: '0.75rem 1rem',
                                     borderRadius: 'var(--radius)',
                                     border: '1px solid var(--border)',
-                                    backgroundColor: selectedMonth === month
-                                        ? 'var(--primary)'
-                                        : hasFiles
-                                            ? '#d1fae5'
-                                            : 'white',
+                                    backgroundColor: bgColor,
                                     color: selectedMonth === month ? 'white' : 'inherit',
                                     cursor: 'pointer',
                                     whiteSpace: 'nowrap',
@@ -359,13 +412,14 @@ export const Dashboard: React.FC = () => {
                                     alignItems: 'center',
                                     gap: '0.25rem',
                                     minWidth: '100px',
-                                    position: 'relative' // For custom tooltip if needed
                                 }}
                             >
                                 <div style={{ fontWeight: 'bold' }}>{month}</div>
-                                {hasFiles && (
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>
-                                        {files.length} File{files.length !== 1 ? 's' : ''}
+                                {ms && (
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
+                                        {ms.allDone
+                                            ? '✅ Vollständig'
+                                            : `${ms.open} offen`}
                                     </div>
                                 )}
                             </button>
@@ -426,7 +480,24 @@ export const Dashboard: React.FC = () => {
                 // Month View
                 selectedMonth && groupedInvoices[selectedMonth] && (
                     <div key={selectedMonth} style={{ marginBottom: '2rem' }}>
-                        <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>{selectedMonth}</h3>
+                        <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>{selectedMonth}</h3>
+                        {/* Monthly Summary Bar */}
+                        {monthStatus[selectedMonth] && (
+                            <div style={{
+                                display: 'flex', gap: '1.5rem', marginBottom: '1rem',
+                                padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
+                                backgroundColor: monthStatus[selectedMonth].allDone ? '#d1fae5' : '#fef9c3',
+                                border: `1px solid ${monthStatus[selectedMonth].allDone ? '#6ee7b7' : '#fde047'}`,
+                                fontSize: '0.9rem'
+                            }}>
+                                <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
+                                <span>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen</span>
+                                {monthStatus[selectedMonth].open > 0 && (
+                                    <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
+                                )}
+                                {monthStatus[selectedMonth].allDone && <span style={{ color: '#065f46' }}>🎉 Monat vollständig abgeglichen!</span>}
+                            </div>
+                        )}
                         <div className="card table-container">
                             <table>
                                 <thead>
@@ -470,6 +541,79 @@ export const Dashboard: React.FC = () => {
                     </div>
                 )
             )}
+
+            {/* Reconciliation Blocking Overlay */}
+            {reconciling && (
+                <div style={{
+                    position: 'fixed', inset: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    zIndex: 9999,
+                    display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', justifyContent: 'center',
+                    gap: '1rem', color: 'white',
+                    fontSize: '1.2rem', fontWeight: 'bold'
+                }}>
+                    <div style={{
+                        width: '48px', height: '48px',
+                        border: '5px solid rgba(255,255,255,0.3)',
+                        borderTopColor: 'white',
+                        borderRadius: '50%',
+                        animation: 'spin 0.8s linear infinite'
+                    }} />
+                    <div>Abgleich läuft...</div>
+                    <div style={{ fontSize: '0.9rem', opacity: 0.8, fontWeight: 'normal' }}>Bitte warten und nicht wegklicken.</div>
+                </div>
+            )}
+
+            {/* Month Deletion Modal */}
+            {showDeleteModal && (
+                <div style={{
+                    position: 'fixed', inset: 0,
+                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    zIndex: 9998,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center'
+                }}>
+                    <div className="card" style={{ minWidth: '320px', maxWidth: '480px', padding: '1.5rem' }}>
+                        <h3 style={{ marginBottom: '1rem' }}>Monat(e) löschen</h3>
+                        <p style={{ marginBottom: '1rem', fontSize: '0.9rem', color: '#6b7280' }}>
+                            Wähle die Monate aus, die gelöscht werden sollen. Alle Rechnungen, Abgleiche und hochgeladenen Dateien des Monats werden entfernt.
+                        </p>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1.5rem', maxHeight: '300px', overflowY: 'auto' }}>
+                            {sortedMonths.map(month => (
+                                <label key={month} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer', padding: '0.4rem 0.5rem', borderRadius: '4px', backgroundColor: selectedMonthsToDelete.has(month) ? '#fee2e2' : 'transparent' }}>
+                                    <input
+                                        type="checkbox"
+                                        checked={selectedMonthsToDelete.has(month)}
+                                        onChange={(e) => {
+                                            const next = new Set(selectedMonthsToDelete);
+                                            if (e.target.checked) next.add(month); else next.delete(month);
+                                            setSelectedMonthsToDelete(next);
+                                        }}
+                                    />
+                                    <span>{month}</span>
+                                    {monthStatus[month] && (
+                                        <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: '#6b7280' }}>
+                                            {monthStatus[month].total} Rechnungen
+                                        </span>
+                                    )}
+                                </label>
+                            ))}
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+                            <button className="btn" onClick={() => { setShowDeleteModal(false); setSelectedMonthsToDelete(new Set()); }}>Abbrechen</button>
+                            <button
+                                className="btn"
+                                onClick={handleDeleteMonths}
+                                disabled={selectedMonthsToDelete.size === 0 || deleting}
+                                style={{ backgroundColor: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca' }}
+                            >
+                                {deleting ? 'Löschen...' : `${selectedMonthsToDelete.size} Monat(e) löschen`}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {toast && <Toast {...toast} onClose={() => setToast(null)} />}
         </div>
     );
