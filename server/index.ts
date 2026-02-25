@@ -381,6 +381,39 @@ app.post('/api/invoices/:id/dunning', async (req, res) => {
     }
 });
 
+// Download JSON Backup
+app.get('/api/backup', async (req, res) => {
+    try {
+        // Fetch all data from main tables
+        const [invoices, importedFiles, bookingPayments, cardPayments, bankTransactions, matches] = await Promise.all([
+            prisma.invoice.findMany(),
+            prisma.importedFile.findMany(),
+            prisma.bookingPayment.findMany(),
+            prisma.cardPayment.findMany(),
+            prisma.bankTransaction.findMany(),
+            prisma.reconciliationMatch.findMany()
+        ]);
+
+        const backupData = {
+            exportDate: new Date().toISOString(),
+            version: "1.0",
+            data: {
+                invoices,
+                importedFiles,
+                bookingPayments,
+                cardPayments,
+                bankTransactions,
+                matches
+            }
+        };
+
+        res.json(backupData);
+    } catch (error) {
+        console.error('Error generating backup:', error);
+        res.status(500).json({ error: 'Failed to generate backup' });
+    }
+});
+
 // Clear entire Database
 app.delete('/api/clear-db', async (req, res) => {
     try {

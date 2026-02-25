@@ -245,15 +245,20 @@ export const Dashboard: React.FC = () => {
 
     // Compute per-month reconciliation status
     const monthStatus = useMemo(() => {
-        const result: Record<string, { total: number; open: number; openSum: number; allDone: boolean }> = {};
+        const result: Record<string, { total: number; open: number; openSum: number; closedSum: number; allDone: boolean }> = {};
         for (const month of Object.keys(groupedInvoices)) {
             const invs = groupedInvoices[month];
             const open = invs.filter(i => !i.isReconciled && !i.manualStatus);
+            const closed = invs.filter(i => i.isReconciled || i.manualStatus);
+
             const openSum = open.reduce((sum, i) => sum + i.amount, 0);
+            const closedSum = closed.reduce((sum, i) => sum + i.amount, 0);
+
             result[month] = {
                 total: invs.length,
                 open: open.length,
                 openSum,
+                closedSum,
                 allDone: open.length === 0
             };
         }
@@ -357,6 +362,30 @@ export const Dashboard: React.FC = () => {
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
+                    <button
+                        className="btn"
+                        onClick={async () => {
+                            try {
+                                showToast('Backup wird generiert...', 'info');
+                                const data = await api.downloadBackup();
+                                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                                const url = window.URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = `hotel-accounting-backup-${new Date().toISOString().split('T')[0]}.json`;
+                                document.body.appendChild(a);
+                                a.click();
+                                window.URL.revokeObjectURL(url);
+                                document.body.removeChild(a);
+                                showToast('Backup erfolgreich heruntergeladen!', 'success');
+                            } catch (e) {
+                                showToast('Backup fehlgeschlagen', 'error');
+                            }
+                        }}
+                        style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
+                    >
+                        Backup laden
+                    </button>
                     <button
                         className="btn"
                         onClick={() => setShowDeleteModal(true)}
@@ -491,11 +520,11 @@ export const Dashboard: React.FC = () => {
                                 fontSize: '0.9rem'
                             }}>
                                 <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
-                                <span>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen</span>
+                                <span style={{ color: '#065f46' }}>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen — Summe: <strong>{monthStatus[selectedMonth].closedSum.toFixed(2)} €</strong></span>
                                 {monthStatus[selectedMonth].open > 0 && (
                                     <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
                                 )}
-                                {monthStatus[selectedMonth].allDone && <span style={{ color: '#065f46' }}>🎉 Monat vollständig abgeglichen!</span>}
+                                {monthStatus[selectedMonth].allDone && <span>🎉 Monat vollständig abgeglichen!</span>}
                             </div>
                         )}
                         <div className="card table-container">

@@ -46,7 +46,7 @@
     ring: 2px solid #3b82f6;
 }
 
-button {
+.login-card button {
     width: 100%;
     padding: 0.75rem;
     background-color: #2563eb;
@@ -58,11 +58,11 @@ button {
     transition: background-color 0.2s;
 }
 
-button:hover {
+.login-card button:hover {
     background-color: #1d4ed8;
 }
 
-button:disabled {
+.login-card button:disabled {
     background-color: #93c5fd;
     cursor: not-allowed;
 }

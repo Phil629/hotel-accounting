@@ -81,5 +81,11 @@ export const api = {
         const res = await fetch(`${API_URL}/import-status`);
         if (!res.ok) throw new Error('Failed to fetch import status');
         return res.json();
+    },
+
+    async downloadBackup() {
+        const res = await fetch(`${API_URL}/backup`);
+        if (!res.ok) throw new Error('Failed to download backup');
+        return res.json();
     }
 };
