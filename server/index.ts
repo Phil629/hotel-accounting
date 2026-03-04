@@ -248,21 +248,36 @@ app.post('/api/reconcile', async (req, res) => {
 // Get Invoices — smart loading: last 4 months + any older month with open invoices
 app.get('/api/invoices', async (req, res) => {
     try {
+        const extraMonthsRaw = req.query.months as string;
+        const extraMonths = extraMonthsRaw ? extraMonthsRaw.split(',') : [];
+
         // Calculate cutoff: start of the month 4 months ago
         const cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - 3);
         cutoff.setDate(1);
         cutoff.setHours(0, 0, 0, 0);
 
+        const orConditions: any[] = [
+            // Always load last 4 months
+            { invoiceDate: { gte: cutoff } },
+            // Also load older invoices that are still open
+            { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false }
+        ];
+
+        for (const m of extraMonths) {
+            const [year, mon] = m.split('-').map(Number);
+            if (!isNaN(year) && !isNaN(mon)) {
+                orConditions.push({
+                    invoiceDate: {
+                        gte: new Date(year, mon - 1, 1),
+                        lt: new Date(year, mon, 1)
+                    }
+                });
+            }
+        }
+
         const invoices = await prisma.invoice.findMany({
-            where: {
-                OR: [
-                    // Always load last 4 months
-                    { invoiceDate: { gte: cutoff } },
-                    // Also load older invoices that are still open
-                    { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false }
-                ]
-            },
+            where: { OR: orConditions },
             include: {
                 matches: {
                     include: {

@@ -23,8 +23,9 @@ export const api = {
         return res.json();
     },
 
-    async getInvoices() {
-        const res = await fetch(`${API_URL}/invoices`);
+    async getInvoices(months?: string[]) {
+        const qs = months && months.length > 0 ? `?months=${months.join(',')}` : '';
+        const res = await fetch(`${API_URL}/invoices${qs}`);
         if (!res.ok) {
             const err = await res.json();
             throw new Error(err.error || 'Failed to fetch invoices');

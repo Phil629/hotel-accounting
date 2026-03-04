@@ -22,6 +22,23 @@ interface Invoice {
 type SortField = 'date' | 'number' | 'recipient' | 'type' | 'amount' | 'status';
 type SortDirection = 'asc' | 'desc';
 
+// Helper: convert German locale month name ("November 2025") to YYYY-MM string
+const monthNameToYYYYMM = (monthName: string): string => {
+    const d = new Date(`1 ${monthName}`);
+    if (!isNaN(d.getTime())) {
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }
+    const months: Record<string, string> = {
+        'Januar': '01', 'Februar': '02', 'März': '03', 'April': '04',
+        'Mai': '05', 'Juni': '06', 'Juli': '07', 'August': '08',
+        'September': '09', 'Oktober': '10', 'November': '11', 'Dezember': '12'
+    };
+    const parts = monthName.split(' ');
+    const month = months[parts[0]];
+    const year = parts[1];
+    return month && year ? `${year}-${month}` : '';
+};
+
 export const Dashboard: React.FC = () => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(false);
@@ -35,15 +52,27 @@ export const Dashboard: React.FC = () => {
     const [selectedMonthsToDelete, setSelectedMonthsToDelete] = useState<Set<string>>(new Set());
     const [deleting, setDeleting] = useState(false);
 
+    const [fullyLoadedMonths, setFullyLoadedMonths] = useState<Set<string>>(() => {
+        const defaultLoaded = new Set<string>();
+        for (let i = 0; i < 4; i++) {
+            const d = new Date();
+            d.setMonth(d.getMonth() - i);
+            defaultLoaded.add(d.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' }));
+        }
+        return defaultLoaded;
+    });
+
     const showToast = (message: string, type: 'success' | 'error' | 'info') => {
         setToast({ message, type });
     };
 
-    const fetchInvoices = async () => {
+    const fetchInvoices = async (monthsToLoad?: Set<string>) => {
         setLoading(true);
         setError(null);
         try {
-            const data = await api.getInvoices();
+            const currentLoaded = monthsToLoad || fullyLoadedMonths;
+            const monthsParam = Array.from(currentLoaded).map(monthNameToYYYYMM).filter(Boolean);
+            const data = await api.getInvoices(monthsParam);
             if (Array.isArray(data)) {
                 setInvoices(data);
             } else {
@@ -215,33 +244,15 @@ export const Dashboard: React.FC = () => {
         return groups;
     }, [filteredInvoices, searchTerm, statusFilter, sortInvoices]);
 
-    // Helper: convert German locale month name ("November 2025") to YYYY-MM string
-    const monthNameToYYYYMM = (monthName: string): string => {
-        // Parse using JS Date by constructing a date string
-        const d = new Date(`1 ${monthName}`);
-        if (!isNaN(d.getTime())) {
-            return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        }
-        // Fallback: try German month names manually
-        const months: Record<string, string> = {
-            'Januar': '01', 'Februar': '02', 'März': '03', 'April': '04',
-            'Mai': '05', 'Juni': '06', 'Juli': '07', 'August': '08',
-            'September': '09', 'Oktober': '10', 'November': '11', 'Dezember': '12'
-        };
-        const parts = monthName.split(' ');
-        const month = months[parts[0]];
-        const year = parts[1];
-        return month && year ? `${year}-${month}` : '';
-    };
-
     // Sort months chronologically
     const sortedMonths = useMemo(() => {
-        return Object.keys(groupedInvoices).sort((a, b) => {
+        const allMonths = new Set([...Object.keys(groupedInvoices), ...Object.keys(importStatus)]);
+        return Array.from(allMonths).sort((a, b) => {
             const dateA = new Date(`1 ${a}`);
             const dateB = new Date(`1 ${b}`);
             return dateB.getTime() - dateA.getTime();
         });
-    }, [groupedInvoices]);
+    }, [groupedInvoices, importStatus]);
 
     // Compute per-month reconciliation status
     const monthStatus = useMemo(() => {
@@ -308,6 +319,16 @@ export const Dashboard: React.FC = () => {
     const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
         if (sortField !== field) return <span style={{ opacity: 0.3 }}>↕</span>;
         return <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>;
+    };
+
+    const handleMonthClick = async (month: string) => {
+        setSelectedMonth(month);
+        if (!fullyLoadedMonths.has(month)) {
+            const newFullyLoaded = new Set(fullyLoadedMonths);
+            newFullyLoaded.add(month);
+            setFullyLoadedMonths(newFullyLoaded);
+            await fetchInvoices(newFullyLoaded);
+        }
     };
 
     // Set default selected month when months change
@@ -415,6 +436,7 @@ export const Dashboard: React.FC = () => {
                         const fileListString = files.map((f: any) => `- ${f.originalName}`).join('\n');
                         const ms = monthStatus[month];
                         const allDone = ms?.allDone ?? false;
+                        const isFullyLoaded = fullyLoadedMonths.has(month);
                         const bgColor = selectedMonth === month
                             ? 'var(--primary)'
                             : allDone && hasFiles
@@ -426,7 +448,7 @@ export const Dashboard: React.FC = () => {
                         return (
                             <button
                                 key={month}
-                                onClick={() => setSelectedMonth(month)}
+                                onClick={() => handleMonthClick(month)}
                                 title={fileListString}
                                 style={{
                                     padding: '0.75rem 1rem',
@@ -444,13 +466,17 @@ export const Dashboard: React.FC = () => {
                                 }}
                             >
                                 <div style={{ fontWeight: 'bold' }}>{month}</div>
-                                {ms && (
+                                {!isFullyLoaded ? (
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
+                                        (zum laden klicken)
+                                    </div>
+                                ) : ms ? (
                                     <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
                                         {ms.allDone
                                             ? '✅ Vollständig'
                                             : `${ms.open} offen`}
                                     </div>
-                                )}
+                                ) : null}
                             </button>
                         );
                     })}
