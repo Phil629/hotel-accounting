@@ -437,9 +437,15 @@ export const Dashboard: React.FC = () => {
                         const ms = monthStatus[month];
                         const allDone = ms?.allDone ?? false;
                         const isFullyLoaded = fullyLoadedMonths.has(month);
+
+                        // Wenn der Monat nicht vollständig geladen ist und keine Rechnungen vom Backend 
+                        // für diesen Monat mitgeschickt wurden (ms ist undefined), bedeutet das, 
+                        // dass es keine offenen Rechnungen gibt (da diese immer geladen werden).
+                        const assumedAllDone = allDone || (!isFullyLoaded && !ms);
+
                         const bgColor = selectedMonth === month
                             ? 'var(--primary)'
-                            : allDone && hasFiles
+                            : assumedAllDone && hasFiles
                                 ? '#bbf7d0'   // green: all reconciled
                                 : hasFiles
                                     ? '#fef3c7' // yellow: files uploaded but open invoices
