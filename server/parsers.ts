@@ -1,9 +1,12 @@
 import fs from 'fs';
 import { parse } from 'csv-parse';
-import { PrismaClient } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import crypto from 'crypto';
 import path from 'path';
+import iconv from 'iconv-lite';
+import prisma from './db';
 
-const prisma = new PrismaClient();
+const BATCH_SIZE = 500;
 
 interface ParsedData {
     type: 'BOOKING' | 'IBELSA' | 'BANK' | 'NEXI' | 'UNKNOWN';
@@ -13,56 +16,79 @@ interface ParsedData {
     logs?: string[];
 }
 
-// Helper: Detect Delimiter
-function detectDelimiter(content: string): string {
-    const firstLine = content.split(/\r?\n/)[0];
-    if (firstLine.includes(';')) return ';';
-    if (firstLine.includes('\t')) return '\t';
-    return ',';
+// ─── File Metadata ───────────────────────────────────────────────────────────
+
+/**
+ * Reads the first 4 KB of a file to determine encoding (BOM or UTF-8 validity
+ * check, falls back to windows-1252 for German bank exports) plus the CSV
+ * delimiter and first header line — all in a single file-open.
+ */
+async function readFileMetadata(filePath: string): Promise<{
+    encoding: string;
+    delimiter: string;
+    header: string;
+}> {
+    const handle = await fs.promises.open(filePath, 'r');
+    try {
+        const buf = Buffer.alloc(4096);
+        const { bytesRead } = await handle.read(buf, 0, 4096, 0);
+        const raw = buf.slice(0, bytesRead);
+
+        const encoding = detectEncoding(raw); // #6
+        const firstLine = iconv.decode(raw, encoding).split(/\r?\n/)[0];
+        const delimiter = firstLine.includes(';') ? ';'
+                        : firstLine.includes('\t') ? '\t'
+                        : ',';
+        return { encoding, delimiter, header: firstLine };
+    } finally {
+        await handle.close();
+    }
 }
 
-export async function processFile(filePath: string): Promise<ParsedData> {
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
-
-    // Detect Type based on Header
-    const lines = fileContent.split(/\r?\n/);
-    const header = lines[0];
-
-    console.log(`Processing file: ${path.basename(filePath)}`);
-    console.log(`Header detected: ${header}`);
-
-    if ((header.includes('Referenznummer') && header.includes('Datum')) || header.includes('Booking.com') || (header.includes('Reference number') && header.includes('Payout date'))) {
-        return await parseBooking(fileContent);
-    } else if ((header.includes('Rechnungsdatum') && header.includes('Rechnungsnummer')) || header.includes('ibelsa')) {
-        return await parseIbelsa(fileContent);
-    } else if ((header.includes('Buchungstag') && header.includes('Verwendungszweck')) || header.includes('Valutadatum')) {
-        return await parseBank(fileContent);
-    } else if ((header.includes('Transaktionsdatum') || header.includes('Belegdatum')) && (header.includes('Umsatz') || header.includes('Betrag'))) {
-        return await parseNexi(fileContent);
+/**
+ * BOM detection + strict UTF-8 validation.
+ * Falls back to windows-1252, which is a superset of ISO-8859-1 and
+ * correctly renders German umlauts from Sparkasse/Volksbank exports.
+ */
+function detectEncoding(buf: Buffer): string {
+    if (buf.length >= 3 && buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf) return 'utf-8';
+    if (buf.length >= 2 && buf[0] === 0xff && buf[1] === 0xfe) return 'utf-16le';
+    if (buf.length >= 2 && buf[0] === 0xfe && buf[1] === 0xff) return 'utf-16be';
+    try {
+        new TextDecoder('utf-8', { fatal: true }).decode(buf);
+        return 'utf-8';
+    } catch {
+        return 'windows-1252';
     }
-
-    console.log("Unknown file header. Trying generic detection...");
-    // Fallback: Try to parse as Nexi if it looks like a CSV with transaction data
-    if (header.includes('Date') && header.includes('Amount')) {
-        return await parseNexi(fileContent);
-    }
-
-    return { type: 'UNKNOWN', count: 0 };
 }
 
-// Helper: Parse German Date (dd.MM.yyyy, dd.MM.yy, yyyy-mm-dd, etc.)
+/**
+ * Returns an async-iterable stream of parsed CSV rows (#5).
+ * fs.createReadStream → iconv decode → csv-parse.
+ * The `for await...of` consumer drives backpressure naturally:
+ * awaiting a DB flush inside the loop pauses the read automatically.
+ */
+function buildCsvStream(filePath: string, encoding: string, delimiter: string): AsyncIterable<string[]> {
+    const parser = parse({ delimiter, from_line: 1, relax_quotes: true });
+    fs.createReadStream(filePath)
+        .pipe(iconv.decodeStream(encoding))
+        .pipe(parser);
+    return parser as unknown as AsyncIterable<string[]>;
+}
+
+// ─── Date & Amount Helpers ────────────────────────────────────────────────────
+
 function parseDate(dateStr: string): Date | null {
     if (!dateStr) return null;
     let clean = dateStr.trim();
 
-    // Try standard dd.MM.yyyy or dd.MM.yy
+    // dd.MM.yyyy or dd.MM.yy
     if (clean.includes('.')) {
         const parts = clean.split('.');
         if (parts.length === 3) {
-            const day = parseInt(parts[0]);
-            const month = parseInt(parts[1]) - 1;
-            let year = parseInt(parts[2]);
-            // Handle 2-digit year
+            const day   = parseInt(parts[0], 10);
+            const month = parseInt(parts[1], 10) - 1;
+            let   year  = parseInt(parts[2], 10);
             if (year < 100) year += 2000;
             if (!isNaN(day) && !isNaN(month) && !isNaN(year)) {
                 return new Date(year, month, day);
@@ -70,328 +96,396 @@ function parseDate(dateStr: string): Date | null {
         }
     }
 
-    // Try yyyy-mm-dd
+    // yyyy-MM-dd or dd-MM-yyyy
     if (clean.includes('-')) {
         const parts = clean.split('-');
         if (parts.length === 3) {
-            // Check if first part is year (4 digits)
             if (parts[0].length === 4) {
-                return new Date(clean);
+                // Use local Date constructor — avoids UTC midnight → local day-1 shift (#1)
+                const [y, m, d] = parts.map(Number);
+                if (!isNaN(y) && !isNaN(m) && !isNaN(d)) return new Date(y, m - 1, d);
+            } else {
+                const day   = parseInt(parts[0], 10);
+                const month = parseInt(parts[1], 10) - 1;
+                const year  = parseInt(parts[2], 10);
+                if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return new Date(year, month, day);
             }
-            // Maybe dd-mm-yyyy?
-            const day = parseInt(parts[0]);
-            const month = parseInt(parts[1]) - 1;
-            const year = parseInt(parts[2]);
-            return new Date(year, month, day);
         }
     }
 
-    // Try verbose format (14. Okt. 2025, 9 Jun 2025)
-    const months: { [key: string]: number } = {
-        // German Short
+    // Verbose: "14. Okt. 2025", "9 Jun 2025"
+    const months: Record<string, number> = {
         'Jan': 0, 'Feb': 1, 'Mär': 2, 'Apr': 3, 'Mai': 4, 'Jun': 5,
         'Jul': 6, 'Aug': 7, 'Sep': 8, 'Sept': 8, 'Okt': 9, 'Nov': 10, 'Dez': 11,
-        // German Full
         'Januar': 0, 'Februar': 1, 'März': 2, 'April': 3, 'Juni': 5,
         'Juli': 6, 'August': 7, 'September': 8, 'Oktober': 9, 'November': 10, 'Dezember': 11,
-        // English Short & Full
         'Oct': 9, 'Dec': 11, 'Mar': 2, 'May': 4,
-        'January': 0, 'February': 1, 'March': 2, 'June': 5, 'July': 6, 'October': 9, 'December': 11
+        'January': 0, 'February': 1, 'March': 2, 'June': 5,
+        'July': 6, 'October': 9, 'December': 11,
     };
-
-    // Clean up the string: remove quotes, extra spaces
     clean = clean.replace(/['"]/g, '').trim();
-
-    // Try splitting by space
-    const verboseParts = clean.split(' ');
-    if (verboseParts.length >= 3) {
-        // Handle "9 Jun 2025" or "14. Okt. 2025"
-        const dayStr = verboseParts[0].replace('.', '');
-        const monthStr = verboseParts[1].replace('.', '');
-        const yearStr = verboseParts[2];
-
-        const day = parseInt(dayStr);
-        const year = parseInt(yearStr);
-        const month = months[monthStr];
-
-        if (!isNaN(day) && month !== undefined && !isNaN(year)) {
-            return new Date(year, month, day);
-        }
+    const vp = clean.split(/\s+/);
+    if (vp.length >= 3) {
+        const day   = parseInt(vp[0].replace('.', ''), 10);
+        const month = months[vp[1].replace('.', '')];
+        const year  = parseInt(vp[2], 10);
+        if (!isNaN(day) && month !== undefined && !isNaN(year)) return new Date(year, month, day);
     }
 
     return null;
 }
 
-// Helper: Parse Amount (1.500,00 -> 1500.00)
 function parseAmount(amountStr: string): number {
     if (!amountStr) return 0;
-    // Remove all non-numeric chars except , . -
-    let clean = amountStr.replace(/[^0-9,.-]/g, '').trim();
+    let clean = amountStr.replace(/[^\d,.-]/g, '').trim();
+    if (!clean) return 0;
 
-    // Detect format:
-    // German: 1.234,56 (comma is decimal)
-    // English: 1,234.56 (dot is decimal)
-
-    // Simple heuristic: last separator is likely decimal
     const lastComma = clean.lastIndexOf(',');
-    const lastDot = clean.lastIndexOf('.');
+    const lastDot   = clean.lastIndexOf('.');
 
     if (lastComma > lastDot) {
-        // German format: remove dots, replace comma with dot
+        // German: 1.234,56 — remove thousand dots, comma becomes decimal point
         clean = clean.replace(/\./g, '').replace(',', '.');
     } else if (lastDot > lastComma) {
-        // English format: remove commas
-        clean = clean.replace(/,/g, '');
+        const decimalsAfterDot = clean.length - lastDot - 1;
+        if (decimalsAfterDot === 3 && lastComma === -1) {
+            // "1.000" — German thousand separator only, no decimal part (#13)
+            clean = clean.replace(/\./g, '');
+        } else {
+            // English: 1,234.56 — remove thousand commas
+            clean = clean.replace(/,/g, '');
+        }
     }
 
-    return parseFloat(clean);
+    const result = parseFloat(clean);
+    return isNaN(result) ? 0 : result;
 }
 
-async function parseBooking(content: string): Promise<ParsedData> {
-    const delimiter = detectDelimiter(content);
-    console.log(`Parsing Booking.com with delimiter: '${delimiter}'`);
+function buildHash(...parts: (string | number | null | undefined)[]): string {
+    return crypto
+        .createHash('sha256')
+        .update(parts.map(p => String(p ?? '')).join('|'))
+        .digest('hex');
+}
 
-    return new Promise((resolve, reject) => {
-        // Parse WITH headers to get the header row
-        parse(content, { delimiter, from_line: 1, relax_quotes: true }, async (err, records) => {
-            if (err) return reject(err);
+function updateDateRange(
+    date: Date,
+    min: Date | null,
+    max: Date | null,
+): [Date, Date] {
+    return [
+        !min || date < min ? date : min,
+        !max || date > max ? date : max,
+    ];
+}
 
-            if (records.length < 2) {
-                return resolve({ type: 'BOOKING', count: 0, logs: ["File too short, no data rows"] });
-            }
+// Splits large upsert arrays into BATCH_SIZE chunks to prevent transaction timeouts (#10)
+async function executeBatched(ops: Prisma.PrismaPromise<unknown>[]): Promise<void> {
+    for (let i = 0; i < ops.length; i += BATCH_SIZE) {
+        await prisma.$transaction(ops.slice(i, i + BATCH_SIZE));
+    }
+}
 
-            // 1. Map Columns from Header (Row 0)
-            const header = records[0].map((col: string) => col.toLowerCase().trim());
-            console.log("Booking.com Header:", header);
+// ─── Entry Point ─────────────────────────────────────────────────────────────
 
-            const colMap = {
-                ref: header.findIndex((h: string) => h.includes('referenz') || h.includes('reference') || h.includes('booking number')),
-                checkIn: header.findIndex((h: string) => h.includes('check-in') || h.includes('anreise')),
-                checkOut: header.findIndex((h: string) => h.includes('check-out') || h.includes('abreise')),
-                amount: header.findIndex((h: string) => h.includes('betrag') || h.includes('amount') || h.includes('total')),
-                payout: header.findIndex((h: string) => h.includes('auszahlungsdatum') || h.includes('payout date') || h.includes('datum der auszahlung'))
+export async function processFile(filePath: string): Promise<ParsedData> {
+    const { encoding, delimiter, header } = await readFileMetadata(filePath);
+
+    console.log(`Processing: ${path.basename(filePath)} [encoding: ${encoding}, delimiter: '${delimiter}']`);
+    console.log(`Header: ${header}`);
+
+    if (
+        (header.includes('Referenznummer') && header.includes('Datum')) ||
+        header.includes('Booking.com') ||
+        (header.includes('Reference number') && header.includes('Payout date'))
+    ) {
+        return parseBooking(filePath, encoding, delimiter);
+    }
+
+    if (
+        (header.includes('Rechnungsdatum') && header.includes('Rechnungsnummer')) ||
+        header.includes('ibelsa')
+    ) {
+        return parseIbelsa(filePath, encoding, delimiter);
+    }
+
+    if (
+        (header.includes('Buchungstag') && header.includes('Verwendungszweck')) ||
+        header.includes('Valutadatum')
+    ) {
+        return parseBank(filePath, encoding, delimiter);
+    }
+
+    if (
+        (header.includes('Transaktionsdatum') || header.includes('Belegdatum')) &&
+        (header.includes('Umsatz') || header.includes('Betrag'))
+    ) {
+        return parseNexi(filePath, encoding, delimiter);
+    }
+
+    if (header.includes('Date') && header.includes('Amount')) {
+        return parseNexi(filePath, encoding, delimiter);
+    }
+
+    console.log('Unknown file header — no parser matched.');
+    return { type: 'UNKNOWN', count: 0 };
+}
+
+// ─── Booking.com ─────────────────────────────────────────────────────────────
+
+async function parseBooking(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const logs: string[] = [];
+    const stream = buildCsvStream(filePath, encoding, delimiter);
+
+    let headerMapped = false;
+    let colMap = { ref: -1, checkIn: -1, checkOut: -1, amount: -1, payout: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    const upsertOps: Prisma.PrismaPromise<unknown>[] = [];
+
+    for await (const row of stream) {
+        // First row is the header
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                ref:      h.findIndex(c => c.includes('referenz') || c.includes('reference') || c.includes('booking number')),
+                checkIn:  h.findIndex(c => c.includes('check-in')  || c.includes('anreise')),
+                checkOut: h.findIndex(c => c.includes('check-out') || c.includes('abreise')),
+                amount:   h.findIndex(c => c.includes('betrag')    || c.includes('amount') || c.includes('total')),
+                payout:   h.findIndex(c => c.includes('auszahlungsdatum') || c.includes('payout date') || c.includes('datum der auszahlung')),
             };
-
-            console.log("Column Mapping:", colMap);
-            const logs: string[] = [`Column Mapping: ${JSON.stringify(colMap)}`];
-
+            logs.push(`Column mapping: ${JSON.stringify(colMap)}`);
             if (colMap.ref === -1 || colMap.amount === -1) {
-                logs.push("Critical columns missing (Reference or Amount)");
-                return resolve({ type: 'BOOKING', count: 0, logs });
+                logs.push('Critical columns missing (ref or amount) — aborting.');
+                return { type: 'BOOKING', count: 0, logs };
             }
+            headerMapped = true;
+            continue;
+        }
 
-            let count = 0;
-            let minDate: Date | null = null;
-            let maxDate: Date | null = null;
+        try {
+            const ref      = row[colMap.ref]?.trim();
+            const checkIn  = colMap.checkIn  > -1 ? parseDate(row[colMap.checkIn])  : null;
+            const checkOut = colMap.checkOut > -1 ? parseDate(row[colMap.checkOut]) : null;
+            const payout   = colMap.payout   > -1 ? parseDate(row[colMap.payout])   : null;
+            const amount   = parseAmount(row[colMap.amount]);
 
-            // 2. Collect all data in memory first
-            const upsertOps: any[] = [];
-            for (let i = 1; i < records.length; i++) {
-                const row = records[i];
-                try {
-                    const ref = row[colMap.ref];
-                    const checkIn = colMap.checkIn > -1 ? parseDate(row[colMap.checkIn]) : null;
-                    const checkOut = colMap.checkOut > -1 ? parseDate(row[colMap.checkOut]) : null;
-                    const amount = parseAmount(row[colMap.amount]);
-                    const payoutDate = colMap.payout > -1 ? parseDate(row[colMap.payout]) : null;
+            if (!ref || !amount) continue;
 
-                    if (!ref || !amount) continue;
+            upsertOps.push(
+                prisma.bookingPayment.upsert({
+                    where: { referenceNumber: ref },
+                    update: {
+                        checkInDate:  checkIn  ?? undefined,
+                        checkOutDate: checkOut ?? undefined,
+                        payoutDate:   payout   ?? undefined,
+                        amount,
+                    },
+                    create: {
+                        referenceNumber: ref,
+                        checkInDate:  checkIn,   // nullable in schema — no new Date(0) fallback (#11)
+                        checkOutDate: checkOut,
+                        payoutDate:   payout,
+                        amount,
+                    },
+                })
+            );
+            count++;
+            if (checkIn) [minDate, maxDate] = updateDateRange(checkIn, minDate, maxDate);
+            if (payout)  [minDate, maxDate] = updateDateRange(payout,  minDate, maxDate);
+        } catch (e) {
+            console.error('Booking.com row error', row, e);
+            logs.push(`Row error: ${e}`);
+        }
+    }
 
-                    upsertOps.push(
-                        prisma.bookingPayment.upsert({
-                            where: { referenceNumber: ref },
-                            update: {
-                                checkInDate: checkIn || undefined,
-                                checkOutDate: checkOut || undefined,
-                                payoutDate: payoutDate || undefined,
-                                amount: amount
-                            },
-                            create: {
-                                referenceNumber: ref,
-                                checkInDate: checkIn || new Date(0),
-                                checkOutDate: checkOut || new Date(0),
-                                payoutDate: payoutDate || new Date(0),
-                                amount: amount
-                            }
-                        })
-                    );
-                    count++;
-
-                    if (checkIn) {
-                        if (!minDate || checkIn < minDate) minDate = checkIn;
-                    }
-                    if (payoutDate) {
-                        if (!maxDate || payoutDate > maxDate) maxDate = payoutDate;
-                    }
-                } catch (e) {
-                    console.error("Error parsing booking row", row, e);
-                    logs.push(`Error parsing row ${i}: ${e}`);
-                }
-            }
-
-            // 3. Execute all upserts in a single transaction
-            if (upsertOps.length > 0) {
-                await prisma.$transaction(upsertOps);
-            }
-            resolve({ type: 'BOOKING', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined, logs });
-        });
-    });
+    await executeBatched(upsertOps); // #10
+    return { type: 'BOOKING', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined, logs };
 }
 
-async function parseIbelsa(content: string): Promise<ParsedData> {
-    const delimiter = detectDelimiter(content);
-    return new Promise((resolve, reject) => {
-        parse(content, { delimiter, from_line: 2, relax_quotes: true }, async (err, records) => {
-            if (err) return reject(err);
+// ─── Ibelsa ──────────────────────────────────────────────────────────────────
 
-            let count = 0;
-            let minDate: Date | null = null;
-            let maxDate: Date | null = null;
-            const upsertOps: any[] = [];
+async function parseIbelsa(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
 
-            for (const row of records) {
-                try {
-                    const date = parseDate(row[0]);
-                    const type = row[1];
-                    const number = row[2];
-                    const recipient = row[3];
-                    const amount = parseAmount(row[5]);
+    let headerMapped = false;
+    let colMap = { date: -1, type: -1, number: -1, recipient: -1, amount: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    const upsertOps: Prisma.PrismaPromise<unknown>[] = [];
 
-                    if (date && number) {
-                        const isCash = type?.toLowerCase() === 'bar';
-                        upsertOps.push(
-                            prisma.invoice.upsert({
-                                where: { invoiceNumber: number },
-                                update: {},
-                                create: {
-                                    invoiceDate: date,
-                                    paymentType: type,
-                                    invoiceNumber: number,
-                                    recipient: recipient,
-                                    amount: amount,
-                                    // Bar (cash) payments are auto-reconciled — no matching needed
-                                    isReconciled: isCash,
-                                    manualStatus: isCash,
-                                    reconciledDate: isCash ? new Date() : null
-                                }
-                            })
-                        );
-                        count++;
-                        if (!minDate || date < minDate) minDate = date;
-                        if (!maxDate || date > maxDate) maxDate = date;
-                    }
-                } catch (e) {
-                    console.error("Error parsing Ibelsa row", row, e);
-                }
+    for await (const row of stream) {
+        // Dynamic column mapping from header (#14) — replaces hardcoded row[0..5]
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                date:      h.findIndex(c => c.includes('rechnungsdatum') || c.includes('datum')),
+                type:      h.findIndex(c => c.includes('zahlungsart') || c.includes('typ') || c.includes('art')),
+                number:    h.findIndex(c => c.includes('rechnungsnummer') || c.includes('nummer') || c.includes('nr')),
+                recipient: h.findIndex(c => c.includes('empfänger') || c.includes('empfaenger') || c.includes('name') || c.includes('gast') || c.includes('kunde')),
+                amount:    h.findIndex(c => c.includes('betrag') || c.includes('summe') || c.includes('amount')),
+            };
+            if (colMap.date === -1 || colMap.number === -1 || colMap.amount === -1) {
+                console.warn('Ibelsa: critical columns not found in header', h);
             }
+            headerMapped = true;
+            continue;
+        }
 
-            if (upsertOps.length > 0) {
-                await prisma.$transaction(upsertOps);
-            }
-            resolve({ type: 'IBELSA', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
-        });
-    });
+        try {
+            const date      = colMap.date      > -1 ? parseDate(row[colMap.date])        : null;
+            const type      = colMap.type      > -1 ? row[colMap.type]?.trim()            : '';
+            const number    = colMap.number    > -1 ? row[colMap.number]?.trim()          : '';
+            const recipient = colMap.recipient > -1 ? row[colMap.recipient]?.trim() ?? '' : '';
+            const amount    = colMap.amount    > -1 ? parseAmount(row[colMap.amount])     : 0;
+
+            if (!date || !number) continue;
+
+            const isCash = type.toLowerCase() === 'bar';
+            upsertOps.push(
+                prisma.invoice.upsert({
+                    where:  { invoiceNumber: number },
+                    update: {},
+                    create: {
+                        invoiceDate:    date,
+                        paymentType:    type,
+                        invoiceNumber:  number,
+                        recipient,
+                        amount,
+                        isReconciled:   isCash,
+                        manualStatus:   isCash,
+                        reconciledDate: isCash ? new Date() : null,
+                    },
+                })
+            );
+            count++;
+            [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
+        } catch (e) {
+            console.error('Ibelsa row error', row, e);
+        }
+    }
+
+    await executeBatched(upsertOps); // #10
+    return { type: 'IBELSA', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
 
-async function parseBank(content: string): Promise<ParsedData> {
-    const delimiter = detectDelimiter(content);
-    return new Promise((resolve, reject) => {
-        parse(content, { delimiter, from_line: 2, relax_quotes: true }, async (err, records) => {
-            if (err) return reject(err);
+// ─── Bank ─────────────────────────────────────────────────────────────────────
 
-            let count = 0;
-            let minDate: Date | null = null;
-            let maxDate: Date | null = null;
-            const createData: any[] = [];
+async function parseBank(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
 
-            for (const row of records) {
-                try {
-                    const date = parseDate(row[4]);
-                    const name = row[6];
-                    const desc = row[10];
-                    const amount = parseAmount(row[11]);
+    let headerMapped = false;
+    let colMap = { date: -1, name: -1, description: -1, amount: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    let batch: Prisma.BankTransactionCreateManyInput[] = [];
 
-                    if (date) {
-                        createData.push({
-                            bookingDate: date,
-                            senderReceiver: name,
-                            description: desc,
-                            amount: amount
-                        });
-                        count++;
-                        if (!minDate || date < minDate) minDate = date;
-                        if (!maxDate || date > maxDate) maxDate = date;
-                    }
-                } catch (e) {
-                    console.error("Error parsing Bank row", row, e);
-                }
-            }
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.bankTransaction.createMany({ data: batch, skipDuplicates: true }); // #2
+        batch = [];
+    }
 
-            if (createData.length > 0) {
-                await prisma.bankTransaction.createMany({ data: createData });
-            }
-            resolve({ type: 'BANK', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
-        });
-    });
+    for await (const row of stream) {
+        // Dynamic column mapping from header (#14) — replaces hardcoded row[4/6/10/11]
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                date:        h.findIndex(c => c.includes('valutadatum') || c.includes('buchungstag') || c.includes('datum')),
+                name:        h.findIndex(c => c.includes('auftraggeber') || c.includes('beguenstigter') || c.includes('empfaenger') || c.includes('name')),
+                description: h.findIndex(c => c.includes('verwendungszweck') || c.includes('beschreibung') || c.includes('betreff')),
+                amount:      h.findIndex(c => c.includes('betrag') || c.includes('amount')),
+            };
+            headerMapped = true;
+            continue;
+        }
+
+        try {
+            const date        = colMap.date        > -1 ? parseDate(row[colMap.date])         : null;
+            const name        = colMap.name        > -1 ? row[colMap.name]?.trim()             : undefined;
+            const description = colMap.description > -1 ? row[colMap.description]?.trim()      : undefined;
+            const amount      = colMap.amount      > -1 ? parseAmount(row[colMap.amount])      : 0;
+
+            if (!date) continue;
+
+            // SHA-256 deduplication key: same row in a re-upload produces the same hash (#2)
+            const externalHash = buildHash(date.toISOString(), amount, description ?? '');
+
+            batch.push({ externalHash, bookingDate: date, senderReceiver: name, description, amount });
+            count++;
+            [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
+
+            if (batch.length >= BATCH_SIZE) await flushBatch(); // #10
+        } catch (e) {
+            console.error('Bank row error', row, e);
+        }
+    }
+
+    await flushBatch();
+    return { type: 'BANK', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
 
-async function parseNexi(content: string): Promise<ParsedData> {
-    const delimiter = detectDelimiter(content);
-    console.log(`Parsing Nexi with delimiter: '${delimiter}'`);
+// ─── Nexi / Card ─────────────────────────────────────────────────────────────
 
-    return new Promise((resolve, reject) => {
-        parse(content, { delimiter, from_line: 2, relax_quotes: true }, async (err, records) => {
-            if (err) return reject(err);
+async function parseNexi(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
 
-            console.log(`Nexi records found: ${records.length}`);
-            if (records.length > 0) {
-                console.log("First Nexi row:", records[0]);
+    let headerMapped = false;
+    let colMap = { type: -1, date: -1, amount: -1, grossAmount: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    let batch: Prisma.CardPaymentCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.cardPayment.createMany({ data: batch, skipDuplicates: true }); // #2
+        batch = [];
+    }
+
+    for await (const row of stream) {
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                type:        h.findIndex(c => c.includes('karte') || c.includes('card') || c.includes('typ')),
+                date:        h.findIndex(c => c.includes('transaktionsdatum') || c.includes('belegdatum') || c.includes('datum') || c.includes('date')),
+                amount:      h.findIndex(c => c.includes('umsatz') || c.includes('betrag') || c.includes('amount')),
+                grossAmount: h.findIndex(c => c.includes('brutto') || c.includes('gross')),
+            };
+            if (colMap.date === -1 || colMap.amount === -1) {
+                console.warn('Nexi: critical columns not found in header', h);
             }
+            headerMapped = true;
+            continue;
+        }
 
-            let count = 0;
-            let minDate: Date | null = null;
-            let maxDate: Date | null = null;
-            const createData: any[] = [];
+        if (row.length < 3) continue;
 
-            for (const row of records) {
-                try {
-                    if (row.length < 3) {
-                        console.warn("Skipping Nexi row, too few columns:", row);
-                        continue;
-                    }
+        try {
+            const cardType  = colMap.type        > -1 ? row[colMap.type]?.trim() ?? ''     : '';
+            const date      = colMap.date        > -1 ? parseDate(row[colMap.date])         : null;
+            let   amount    = colMap.amount      > -1 ? parseAmount(row[colMap.amount])     : 0;
+            const gross     = colMap.grossAmount > -1 ? parseAmount(row[colMap.grossAmount]): 0;
 
-                    const type = row[1];
-                    const date = parseDate(row[2]);
+            if (amount === 0 && gross > 0) amount = gross;
+            if (!date) { console.warn('Nexi: invalid date, row skipped', row); continue; }
 
-                    let amount = parseAmount(row[10]);
-                    let gross = parseAmount(row[11]);
+            // SHA-256 deduplication key (#2)
+            const externalHash = buildHash(date.toISOString(), cardType, amount);
 
-                    if (amount === 0 && gross > 0) {
-                        amount = gross;
-                    }
+            batch.push({ externalHash, transactionDate: date, cardType, amount, grossAmount: gross || null });
+            count++;
+            [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
 
-                    if (date) {
-                        createData.push({
-                            transactionDate: date,
-                            cardType: type,
-                            amount: amount,
-                            grossAmount: gross
-                        });
-                        count++;
-                        if (!minDate || date < minDate) minDate = date;
-                        if (!maxDate || date > maxDate) maxDate = date;
-                    } else {
-                        console.warn("Nexi row skipped, invalid date:", row[2]);
-                    }
-                } catch (e) {
-                    console.error("Error parsing Nexi row", row, e);
-                }
-            }
+            if (batch.length >= BATCH_SIZE) await flushBatch(); // #10
+        } catch (e) {
+            console.error('Nexi row error', row, e);
+        }
+    }
 
-            if (createData.length > 0) {
-                await prisma.cardPayment.createMany({ data: createData });
-            }
-            resolve({ type: 'NEXI', count, dateRangeStart: minDate || undefined, dateRangeEnd: maxDate || undefined });
-        });
-    });
+    await flushBatch();
+    return { type: 'NEXI', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }

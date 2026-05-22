@@ -8,6 +8,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Invoice {
@@ -16,8 +17,8 @@ model Invoice {
   paymentType       String   // e.g., "Banküberweisung", "Booking.com"
   invoiceNumber     String   @unique // e.g., "Rechnung 17841 / 2025"
   recipient         String
-  amount            Float
-  
+  amount            Decimal  @db.Decimal(12, 2)
+
   // Reconciliation Status
   isReconciled      Boolean  @default(false)
   reconciledDate    DateTime?
@@ -31,74 +32,90 @@ model Invoice {
 
   // Relations
   matches           ReconciliationMatch[]
-  
+
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([invoiceDate])
+  @@index([isReconciled, invoiceDate])
 }
 
 model BankTransaction {
   id                Int      @id @default(autoincrement())
   bookingDate       DateTime
-  amount            Float
+  amount            Decimal  @db.Decimal(12, 2)
   currency          String   @default("EUR")
   senderReceiver    String?
   description       String?  // Verwendungszweck
-  
+
+  // SHA-256 of "bookingDate|amount|description" — prevents duplicate imports
+  externalHash      String?  @unique
+
   // Relations
   matches           ReconciliationMatch[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([bookingDate])
 }
 
 model BookingPayment {
   id                Int      @id @default(autoincrement())
   referenceNumber   String   @unique
-  checkInDate       DateTime
-  checkOutDate      DateTime
-  payoutDate        DateTime
-  amount            Float
+  // Nullable: not every Booking.com export includes all date columns
+  checkInDate       DateTime?
+  checkOutDate      DateTime?
+  payoutDate        DateTime?
+  amount            Decimal  @db.Decimal(12, 2)
   currency          String   @default("EUR")
-  
+
   // Relations
   matches           ReconciliationMatch[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([checkInDate])
 }
 
 model CardPayment {
   id                Int      @id @default(autoincrement())
   transactionDate   DateTime
   cardType          String   // e.g., "Visa", "Mastercard"
-  amount            Float
-  grossAmount       Float?
-  
+  amount            Decimal  @db.Decimal(12, 2)
+  grossAmount       Decimal? @db.Decimal(12, 2)
+
+  // SHA-256 of "transactionDate|cardType|amount" — prevents duplicate imports
+  externalHash      String?  @unique
+
   // Relations
   matches           ReconciliationMatch[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
+
+  @@index([transactionDate])
 }
 
 model ReconciliationMatch {
   id                Int      @id @default(autoincrement())
   invoiceId         Int
   invoice           Invoice  @relation(fields: [invoiceId], references: [id])
-  
-  // Polymorphic-like relation (one of these should be set)
+
+  // Polymorphic-like relation (exactly one of these should be set)
   bankTransactionId Int?
   bankTransaction   BankTransaction? @relation(fields: [bankTransactionId], references: [id])
-  
+
   bookingPaymentId  Int?
   bookingPayment    BookingPayment? @relation(fields: [bookingPaymentId], references: [id])
-  
+
   cardPaymentId     Int?
   cardPayment       CardPayment? @relation(fields: [cardPaymentId], references: [id])
-  
-  matchType         String   // "AUTOMATIC", "MANUAL"
+
+  matchType         String   // "AUTOMATIC", "MANUAL_REF", "MANUAL"
   confidence        Float?   // 1.0 for exact match
-  
+
   createdAt         DateTime @default(now())
 }
 

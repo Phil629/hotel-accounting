@@ -1,26 +1,43 @@
+import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { PrismaClient } from '@prisma/client';
+import prisma from './db';
 import { processFile } from './parsers';
+import { runReconciliation } from './reconciliation';
 
 const app = express();
-const prisma = new PrismaClient();
 const port = process.env.PORT || 3010;
 
-// Middleware
-app.use(cors());
+// ─── CORS (#16) ───────────────────────────────────────────────────────────────
+// Allowed origins are configured via ALLOWED_ORIGINS env var (comma-separated).
+// Default covers the Vite dev server. In production set the real frontend URL.
+// Example: ALLOWED_ORIGINS=https://hotel.example.com
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
+    .split(',')
+    .map(o => o.trim())
+    .filter(Boolean);
+
+app.use(cors({
+    origin: (origin, callback) => {
+        // Allow requests with no Origin header (curl, Postman, same-origin server calls)
+        if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error(`CORS: origin '${origin}' is not allowed`));
+        }
+    },
+    credentials: true,
+}));
 app.use(express.json());
 
-// File Upload Configuration
+// ─── File Upload (#15) ────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
         const uploadDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir);
-        }
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
@@ -28,19 +45,51 @@ const storage = multer.diskStorage({
     },
 });
 
-const upload = multer({ storage });
+const upload = multer({
+    storage,
+    limits: {
+        fileSize: 50 * 1024 * 1024, // 50 MB per file
+        files: 10,                   // max 10 files per request
+    },
+    fileFilter: (_req, file, cb) => {
+        if (!file.originalname.match(/\.(csv|txt)$/i)) {
+            cb(new Error(`Unsupported file type: only .csv and .txt are accepted (got: ${file.originalname})`));
+            return;
+        }
+        cb(null, true);
+    },
+});
 
-// Routes
-app.get('/api/health', (req, res) => {
+// ─── Admin Auth (#4) ──────────────────────────────────────────────────────────
+// Protects destructive endpoints. Set ADMIN_SECRET in your .env file.
+// Requests must include the header:  x-admin-key: <your-secret>
+function requireAdminKey(
+    req: express.Request,
+    res: express.Response,
+    next: express.NextFunction,
+): void {
+    const provided = req.headers['x-admin-key'];
+    const expected = process.env.ADMIN_SECRET;
+    if (!expected || provided !== expected) {
+        res.status(403).json({ error: 'Forbidden: valid x-admin-key header required' });
+        return;
+    }
+    next();
+}
+
+// ─── Routes ───────────────────────────────────────────────────────────────────
+
+app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
 });
 
-// Upload Endpoint
+// Upload & parse CSV files
 app.post('/api/upload', upload.array('files'), async (req, res) => {
     try {
         const files = req.files as Express.Multer.File[];
         if (!files || files.length === 0) {
-            return res.status(400).json({ error: 'No files uploaded' });
+            res.status(400).json({ error: 'No files uploaded' });
+            return;
         }
 
         const results = [];
@@ -49,74 +98,49 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
             try {
                 const result = await processFile(file.path);
 
-                // Duplicate check removed to allow re-processing (upsert handles data deduplication)
-                /*
-                const existingFile = await prisma.importedFile.findFirst({
-                    where: {
-                        originalName: file.originalname,
-                        type: result.type,
-                        dateRangeStart: result.dateRangeStart,
-                        dateRangeEnd: result.dateRangeEnd
-                    },
-                    orderBy: { importDate: 'desc' }
-                });
-
-                if (existingFile && existingFile.recordCount > 0) {
-                    // ...
-                }
-                */
-
-                // Auto-Rename Logic
+                // Auto-rename: prefix with type + month + year for easy identification
                 let newFilename = file.originalname;
                 if (result.dateRangeStart) {
                     const month = result.dateRangeStart.toLocaleString('default', { month: 'short' });
-                    const year = result.dateRangeStart.getFullYear();
-                    const type = result.type === 'UNKNOWN' ? 'File' : result.type;
-                    newFilename = `${type}_${month}_${year}_${Date.now()}.csv`;
-
-                    const newPath = path.join(path.dirname(file.path), newFilename);
-                    fs.renameSync(file.path, newPath);
+                    const year  = result.dateRangeStart.getFullYear();
+                    const type  = result.type === 'UNKNOWN' ? 'File' : result.type;
+                    newFilename  = `${type}_${month}_${year}_${Date.now()}.csv`;
+                    fs.renameSync(file.path, path.join(path.dirname(file.path), newFilename));
                 }
 
-                // Save to DB
                 await prisma.importedFile.create({
                     data: {
-                        filename: newFilename,
-                        originalName: file.originalname,
-                        type: result.type,
-                        recordCount: result.count,
+                        filename:       newFilename,
+                        originalName:   file.originalname,
+                        type:           result.type,
+                        recordCount:    result.count,
                         dateRangeStart: result.dateRangeStart,
-                        dateRangeEnd: result.dateRangeEnd,
-                        logs: result.logs ? JSON.stringify(result.logs) : null
-                    }
+                        dateRangeEnd:   result.dateRangeEnd,
+                        logs:           result.logs ? JSON.stringify(result.logs) : null,
+                    },
                 });
 
                 results.push({
-                    filename: newFilename,
+                    filename:     newFilename,
                     originalName: file.originalname,
-                    status: 'processed',
-                    type: result.type,
-                    count: result.count
+                    status:       'processed',
+                    type:         result.type,
+                    count:        result.count,
                 });
             } catch (e) {
                 console.error(`Error processing ${file.originalname}:`, e);
 
-                // Save Error to DB History
                 await prisma.importedFile.create({
                     data: {
-                        filename: file.originalname,
+                        filename:     file.originalname,
                         originalName: file.originalname,
-                        type: 'ERROR',
-                        recordCount: 0,
-                        logs: JSON.stringify([`Error processing file: ${String(e)}`])
-                    }
+                        type:         'ERROR',
+                        recordCount:  0,
+                        logs:         JSON.stringify([`Error: ${String(e)}`]),
+                    },
                 });
 
-                results.push({
-                    filename: file.originalname,
-                    status: 'error',
-                    error: String(e)
-                });
+                results.push({ filename: file.originalname, status: 'error', error: String(e) });
             }
         }
 
@@ -127,101 +151,46 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
     }
 });
 
-// Get Uploaded Files
-app.get('/api/files', async (req, res) => {
+// List all imported files
+app.get('/api/files', async (_req, res) => {
     try {
-        const files = await prisma.importedFile.findMany({
-            orderBy: { importDate: 'desc' }
-        });
+        const files = await prisma.importedFile.findMany({ orderBy: { importDate: 'desc' } });
         res.json(files);
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch files' });
     }
 });
 
-// Get Import Status by Month (Grouped list of files)
-app.get('/api/import-status', async (req, res) => {
+// Import status grouped by month — used by the dashboard's status indicators.
+// Keys are German locale month names ("November 2025") to match the frontend
+// grouping in Dashboard.tsx which uses toLocaleDateString('de-DE', ...).
+app.get('/api/import-status', async (_req, res) => {
     try {
-        const files = await prisma.importedFile.findMany({
-            orderBy: { importDate: 'desc' }
-        });
+        const files = await prisma.importedFile.findMany({ orderBy: { importDate: 'desc' } });
 
-        // Group by month: { "2023-11": [File1, File2], ... }
-        const statusByMonth: Record<string, any[]> = {};
+        const statusByMonth: Record<string, typeof files> = {};
 
         for (const file of files) {
             if (!file.dateRangeStart || !file.dateRangeEnd) continue;
 
-            const startDate = new Date(file.dateRangeStart);
-            const endDate = new Date(file.dateRangeEnd);
+            let current = new Date(
+                new Date(file.dateRangeStart).getFullYear(),
+                new Date(file.dateRangeStart).getMonth(),
+                1,
+            );
+            const last = new Date(
+                new Date(file.dateRangeEnd).getFullYear(),
+                new Date(file.dateRangeEnd).getMonth(),
+                1,
+            );
 
-            // Iterate through months from start to end
-            let currentDate = new Date(startDate.getFullYear(), startDate.getMonth(), 1);
-            const lastDate = new Date(endDate.getFullYear(), endDate.getMonth(), 1);
-
-            while (currentDate <= lastDate) {
-                const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`; // e.g., "2025-11"
-                // Format for UI (or keep this key and format in UI, let's keep consistent with existing key format)
-                // Existing code used a separate 'month' formatted string in UI but keys were likely YYYY-MM based on the while loop in previous code?
-                // Wait, previous code:
-                /*
-                const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-                */
-                // But the UI used `month.toLocaleDateString` for display.
-                // Let's stick to the key format "Month Year" (e.g., "November 2025") which seemed to be what the UI was using for `sortedMonths` keys in `Dashboard.tsx`.
-                // Actually in `Dashboard.tsx`:
-                /*
-                 const date = new Date(inv.invoiceDate);
-                 const monthKey = date.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
-                */
-                // So the invoice grouping uses "November 2025".
-                // The `importStatus` endpoint previously used `YYYY-MM`.
-                // And `Dashboard.tsx` mapped `month` (from `sortedMonths` which are "November 2025") to... wait.
-                // `Dashboard.tsx`:
-                /*
-                 const monthKey = month; // e.g., "2025-11"
-                */
-                // Wait, `sortedMonths` comes from `groupedInvoices`.
-                // `groupedInvoices` keys are "Month Year" (German locale).
-                // So `monthKey` in line 315 implies `month` is "Month Year".
-                // BUT `importStatus` keys in previous server code were `YYYY-MM`.
-                // So there was a mismatch! Or I missed something.
-                // Let's re-read `Dashboard.tsx` line 315-316:
-                /*
-                 const monthKey = month; // e.g., "2025-11"
-                 const status = importStatus[monthKey] || ...
-                */
-                // If `sortedMonths` are "November 2025", then `monthKey` is "November 2025".
-                // If `importStatus` uses `YYYY-MM`, then `importStatus["November 2025"]` would be undefined.
-                // Let's check `Dashboard.tsx` again.
-                /*
-                186: const monthKey = date.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
-                */
-                // So `groupedInvoices` keys are "November 2025".
-                // So `sortedMonths` are "November 2025".
-                // So `importStatus` MUST accept "November 2025" keys OR the dashboard was broken/I misread.
-                // Previous server code:
-                /*
-                167: const monthKey = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}`;
-                */
-                // That looks like "2025-11".
-                // So the status indicators might have been broken, or I am misinterpreting `sortedMonths`.
-                // The user wants "Month Year" grouping.
-                // To avoid confusion, I will make the server return "Month Year" keys using German locale to match `Dashboard.tsx`.
-
-                const monthName = currentDate.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
-
-                if (!statusByMonth[monthName]) {
-                    statusByMonth[monthName] = [];
+            while (current <= last) {
+                const key = current.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
+                if (!statusByMonth[key]) statusByMonth[key] = [];
+                if (!statusByMonth[key].some(f => f.id === file.id)) {
+                    statusByMonth[key].push(file);
                 }
-
-                // Avoid duplicates in the list
-                if (!statusByMonth[monthName].some((f: any) => f.id === file.id)) {
-                    statusByMonth[monthName].push(file);
-                }
-
-                // Next month
-                currentDate.setMonth(currentDate.getMonth() + 1);
+                current.setMonth(current.getMonth() + 1);
             }
         }
 
@@ -232,10 +201,8 @@ app.get('/api/import-status', async (req, res) => {
     }
 });
 
-// Reconciliation Endpoint
-import { runReconciliation } from './reconciliation';
-
-app.post('/api/reconcile', async (req, res) => {
+// Run reconciliation
+app.post('/api/reconcile', async (_req, res) => {
     try {
         const result = await runReconciliation();
         res.json({ message: 'Reconciliation complete', ...result });
@@ -245,50 +212,50 @@ app.post('/api/reconcile', async (req, res) => {
     }
 });
 
-// Get Invoices — smart loading: last 4 months + any older month with open invoices
+// Get invoices — last 4 months + older months that still have open invoices.
+// Optional ?months=YYYY-MM,YYYY-MM to force-load specific older months.
 app.get('/api/invoices', async (req, res) => {
     try {
-        const extraMonthsRaw = req.query.months as string;
-        const extraMonths = extraMonthsRaw ? extraMonthsRaw.split(',') : [];
+        const extraMonths = req.query.months
+            ? (req.query.months as string).split(',')
+            : [];
 
-        // Calculate cutoff: start of the month 4 months ago
         const cutoff = new Date();
         cutoff.setMonth(cutoff.getMonth() - 3);
         cutoff.setDate(1);
         cutoff.setHours(0, 0, 0, 0);
 
-        const orConditions: any[] = [
-            // Always load last 4 months
+        const orConditions: object[] = [
             { invoiceDate: { gte: cutoff } },
-            // Also load older invoices that are still open
-            { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false }
+            { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false },
         ];
 
         for (const m of extraMonths) {
             const [year, mon] = m.split('-').map(Number);
-            if (!isNaN(year) && !isNaN(mon)) {
+            if (!isNaN(year) && !isNaN(mon) && mon >= 1 && mon <= 12) {
                 orConditions.push({
                     invoiceDate: {
                         gte: new Date(year, mon - 1, 1),
-                        lt: new Date(year, mon, 1)
-                    }
+                        lt:  new Date(year, mon,     1),
+                    },
                 });
             }
         }
 
         const invoices = await prisma.invoice.findMany({
-            where: { OR: orConditions },
+            where:   { OR: orConditions },
             include: {
                 matches: {
                     include: {
-                        bookingPayment: true,
-                        cardPayment: true,
-                        bankTransaction: true
-                    }
-                }
+                        bookingPayment:  true,
+                        cardPayment:     true,
+                        bankTransaction: true,
+                    },
+                },
             },
-            orderBy: { invoiceDate: 'desc' }
+            orderBy: { invoiceDate: 'desc' },
         });
+
         res.json(invoices);
     } catch (error) {
         console.error('Error fetching invoices:', error);
@@ -296,34 +263,29 @@ app.get('/api/invoices', async (req, res) => {
     }
 });
 
-// Delete invoices by month (e.g. month=2025-10)
+// Delete all invoices (and their matches + imported files) for a given month.
+// Query param: month=YYYY-MM
 app.delete('/api/invoices/by-month', async (req, res) => {
-    const { month } = req.query; // format: YYYY-MM
+    const { month } = req.query;
     if (!month || typeof month !== 'string') {
-        return res.status(400).json({ error: 'month query param required (YYYY-MM)' });
+        res.status(400).json({ error: 'month query param required (YYYY-MM)' });
+        return;
     }
     try {
         const [year, mon] = month.split('-').map(Number);
         const start = new Date(year, mon - 1, 1);
-        const end = new Date(year, mon, 1); // first day of next month
+        const end   = new Date(year, mon,     1);
 
-        // Find invoices in that month
         const invoicesToDelete = await prisma.invoice.findMany({
-            where: { invoiceDate: { gte: start, lt: end } },
-            select: { id: true }
+            where:  { invoiceDate: { gte: start, lt: end } },
+            select: { id: true },
         });
         const ids = invoicesToDelete.map(i => i.id);
 
-        // Delete matches first (FK constraint), then invoices
+        // Respect FK constraints: matches first, then invoices
         await prisma.reconciliationMatch.deleteMany({ where: { invoiceId: { in: ids } } });
         await prisma.invoice.deleteMany({ where: { id: { in: ids } } });
-
-        // Also remove imported files for that month
-        await prisma.importedFile.deleteMany({
-            where: {
-                dateRangeStart: { gte: start, lt: end }
-            }
-        });
+        await prisma.importedFile.deleteMany({ where: { dateRangeStart: { gte: start, lt: end } } });
 
         res.json({ success: true, deleted: ids.length });
     } catch (error) {
@@ -332,27 +294,17 @@ app.delete('/api/invoices/by-month', async (req, res) => {
     }
 });
 
-// Manual Verification
+// Manually verify / un-verify an invoice
 app.post('/api/invoices/:id/verify', async (req, res) => {
-    const { id } = req.params;
-    const { status } = req.body; // boolean
+    const invoiceId = parseInt(req.params.id);
+    const { status } = req.body;
     try {
-        const invoiceId = parseInt(id);
-
-        // If un-verifying (status = false), delete any existing matches
         if (!status) {
-            await prisma.reconciliationMatch.deleteMany({
-                where: { invoiceId: invoiceId }
-            });
+            await prisma.reconciliationMatch.deleteMany({ where: { invoiceId } });
         }
-
         await prisma.invoice.update({
             where: { id: invoiceId },
-            data: {
-                manualStatus: status,
-                isReconciled: status, // If manually verified, it's reconciled
-                reconciledDate: status ? new Date() : null
-            }
+            data:  { manualStatus: status, isReconciled: status, reconciledDate: status ? new Date() : null },
         });
         res.json({ success: true });
     } catch (error) {
@@ -361,14 +313,12 @@ app.post('/api/invoices/:id/verify', async (req, res) => {
     }
 });
 
-// Update Comment
+// Update comment on an invoice
 app.post('/api/invoices/:id/comment', async (req, res) => {
-    const { id } = req.params;
-    const { comment } = req.body;
     try {
         await prisma.invoice.update({
-            where: { id: parseInt(id) },
-            data: { comment }
+            where: { id: parseInt(req.params.id) },
+            data:  { comment: req.body.comment },
         });
         res.json({ success: true });
     } catch (error) {
@@ -376,18 +326,17 @@ app.post('/api/invoices/:id/comment', async (req, res) => {
     }
 });
 
-// Update Dunning Status
+// Update dunning status on an invoice
 app.post('/api/invoices/:id/dunning', async (req, res) => {
-    const { id } = req.params;
     const { status, method, date } = req.body;
     try {
         await prisma.invoice.update({
-            where: { id: parseInt(id) },
-            data: {
+            where: { id: parseInt(req.params.id) },
+            data:  {
                 dunningStatus: status,
                 dunningMethod: method,
-                dunningDate: date ? new Date(date) : null
-            }
+                dunningDate:   date ? new Date(date) : null,
+            },
         });
         res.json({ success: true });
     } catch (error) {
@@ -396,43 +345,49 @@ app.post('/api/invoices/:id/dunning', async (req, res) => {
     }
 });
 
-// Download JSON Backup
-app.get('/api/backup', async (req, res) => {
+// JSON backup of all data (#17)
+// Capped at BACKUP_ROW_CAP rows per table to prevent OOM on large datasets.
+// The response includes a `truncated` flag when any table hit the cap.
+// For a full database dump use pg_dump or a direct DB tool.
+const BACKUP_ROW_CAP = 10_000;
+
+app.get('/api/backup', async (_req, res) => {
     try {
-        // Fetch all data from main tables
-        const [invoices, importedFiles, bookingPayments, cardPayments, bankTransactions, matches] = await Promise.all([
-            prisma.invoice.findMany(),
-            prisma.importedFile.findMany(),
-            prisma.bookingPayment.findMany(),
-            prisma.cardPayment.findMany(),
-            prisma.bankTransaction.findMany(),
-            prisma.reconciliationMatch.findMany()
-        ]);
+        const [invoices, importedFiles, bookingPayments, cardPayments, bankTransactions, matches] =
+            await Promise.all([
+                prisma.invoice.findMany(           { take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+                prisma.importedFile.findMany(      { take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+                prisma.bookingPayment.findMany(    { take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+                prisma.cardPayment.findMany(       { take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+                prisma.bankTransaction.findMany(   { take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+                prisma.reconciliationMatch.findMany({ take: BACKUP_ROW_CAP, orderBy: { id: 'desc' } }),
+            ]);
 
-        const backupData = {
+        const truncated =
+            invoices.length          === BACKUP_ROW_CAP ||
+            bookingPayments.length   === BACKUP_ROW_CAP ||
+            cardPayments.length      === BACKUP_ROW_CAP ||
+            bankTransactions.length  === BACKUP_ROW_CAP ||
+            matches.length           === BACKUP_ROW_CAP;
+
+        res.json({
             exportDate: new Date().toISOString(),
-            version: "1.0",
-            data: {
-                invoices,
-                importedFiles,
-                bookingPayments,
-                cardPayments,
-                bankTransactions,
-                matches
-            }
-        };
-
-        res.json(backupData);
+            version:    '1.0',
+            truncated,
+            ...(truncated && { rowCap: BACKUP_ROW_CAP, note: 'Use pg_dump for a complete export.' }),
+            data: { invoices, importedFiles, bookingPayments, cardPayments, bankTransactions, matches },
+        });
     } catch (error) {
         console.error('Error generating backup:', error);
         res.status(500).json({ error: 'Failed to generate backup' });
     }
 });
 
-// Clear entire Database
-app.delete('/api/clear-db', async (req, res) => {
+// Wipe entire database — admin-key required (#4)
+app.delete('/api/clear-db', requireAdminKey, async (_req, res) => {
     try {
-        console.log('Clearing database via API...');
+        console.log('Clearing database...');
+        // Delete in FK-safe order
         await prisma.reconciliationMatch.deleteMany({});
         await prisma.invoice.deleteMany({});
         await prisma.bookingPayment.deleteMany({});
@@ -447,7 +402,35 @@ app.delete('/api/clear-db', async (req, res) => {
     }
 });
 
-// Start Server
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+// Catches multer errors (file too large, wrong type) and CORS rejections so
+// they return structured JSON instead of the default HTML error page.
+app.use((
+    err: Error,
+    _req: express.Request,
+    res: express.Response,
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    _next: express.NextFunction,
+) => {
+    if (err instanceof multer.MulterError) {
+        // e.g. LIMIT_FILE_SIZE, LIMIT_FILE_COUNT
+        res.status(400).json({ error: `Upload rejected: ${err.message}` });
+        return;
+    }
+    if (err.message?.startsWith('Unsupported file type')) {
+        res.status(400).json({ error: err.message });
+        return;
+    }
+    if (err.message?.startsWith('CORS:')) {
+        res.status(403).json({ error: err.message });
+        return;
+    }
+    console.error('Unhandled error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+});
+
+// ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
+    console.log(`Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });
