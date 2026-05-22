@@ -13,9 +13,9 @@ const port = process.env.PORT || 3010;
 
 // ─── CORS (#16) ───────────────────────────────────────────────────────────────
 // Allowed origins are configured via ALLOWED_ORIGINS env var (comma-separated).
-// Default covers the Vite dev server. In production set the real frontend URL.
+// Default covers the Vite dev server and Netlify production.
 // Example: ALLOWED_ORIGINS=https://hotel.example.com
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'http://localhost:5173')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://rechnungsabgleich.netlify.app,http://localhost:5173')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
