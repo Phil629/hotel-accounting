@@ -169,8 +169,8 @@ export const Dashboard: React.FC = () => {
                     bVal = b.paymentType.toLowerCase();
                     break;
                 case 'amount':
-                    aVal = a.amount;
-                    bVal = b.amount;
+                    aVal = Number(a.amount);
+                    bVal = Number(b.amount);
                     break;
                 case 'status':
                     aVal = a.isReconciled ? 1 : (a.manualStatus ? 0.5 : 0);
@@ -210,7 +210,7 @@ export const Dashboard: React.FC = () => {
             const lowerTerm = searchTerm.toLowerCase();
 
             // Improved amount matching: allow "12,50" to match 12.50
-            const amountStr = inv.amount.toFixed(2); // "12.50"
+            const amountStr = Number(inv.amount).toFixed(2); // "12.50"
             const amountStrComma = amountStr.replace('.', ','); // "12,50"
 
             return (
@@ -262,8 +262,8 @@ export const Dashboard: React.FC = () => {
             const open = invs.filter(i => !i.isReconciled && !i.manualStatus);
             const closed = invs.filter(i => i.isReconciled || i.manualStatus);
 
-            const openSum = open.reduce((sum, i) => sum + i.amount, 0);
-            const closedSum = closed.reduce((sum, i) => sum + i.amount, 0);
+            const openSum = open.reduce((sum, i) => sum + Number(i.amount), 0);
+            const closedSum = closed.reduce((sum, i) => sum + Number(i.amount), 0);
 
             result[month] = {
                 total: invs.length,
@@ -305,13 +305,13 @@ export const Dashboard: React.FC = () => {
         const match = inv.matches[0];
 
         if (match.bookingPayment) {
-            return `Booking.com: ${match.bookingPayment.amount.toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
+            return `Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
         }
         if (match.cardPayment) {
-            return `Card (${match.cardPayment.cardType}): ${match.cardPayment.amount.toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
+            return `Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
         }
         if (match.bankTransaction) {
-            return `Bank: ${match.bankTransaction.amount.toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
+            return `Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
         }
         return "Matched";
     };
@@ -737,7 +737,7 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>{inv.invoiceNumber}</td>
             <td>{inv.recipient}</td>
             <td>{inv.paymentType}</td>
-            <td>{inv.amount.toFixed(2)} €</td>
+            <td>{Number(inv.amount).toFixed(2)} €</td>
             <td>
                 <div className="tooltip-container">
                     <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : 'status-open'}`}>
