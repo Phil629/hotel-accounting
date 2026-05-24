@@ -261,7 +261,7 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
         if (!headerMapped) {
             const h = row.map(c => c.toLowerCase().trim());
             colMap = {
-                ref:      h.findIndex(c => c.includes('referenz') || c.includes('reference') || c.includes('booking number')),
+                ref:      h.findIndex(c => c.includes('referenz') || c.includes('reference') || c.includes('booking number') || c.includes('buchungsnummer')),
                 checkIn:  h.findIndex(c => c.includes('check-in')  || c.includes('anreise')),
                 checkOut: h.findIndex(c => c.includes('check-out') || c.includes('abreise')),
                 amount:   h.findIndex(c => c.includes('betrag')    || c.includes('amount') || c.includes('total')),
