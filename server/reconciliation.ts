@@ -181,25 +181,13 @@ function matchBooking(
         // Both dates are nullable after the schema migration; skip date check
         // when they are missing and rely on the reference match alone.
         let dateMatch = false;
-        if (payment.payoutDate) {
-            // payoutDay = invoice.invoiceDate - payment.payoutDate
-            const payoutDay = differenceInDays(invoice.invoiceDate, payment.payoutDate);
-            // Payout is usually after the invoice date.
-            // Allow payout up to 10 days before invoice, and up to 40 days after invoice.
-            const isPayoutValid = payoutDay >= -40 && payoutDay <= 10;
-            
-            if (payment.checkInDate) {
-                // invoiceDay = invoice.invoiceDate - payment.checkInDate
-                const invoiceDay = differenceInDays(invoice.invoiceDate, payment.checkInDate);
-                // Check-in is usually before or on the invoice date.
-                // Allow check-in up to 10 days after the invoice.
-                const isCheckInValid = invoiceDay >= -10;
-                
-                dateMatch = isPayoutValid && isCheckInValid;
-            } else {
-                // Fall back to just the payout date window
-                dateMatch = isPayoutValid;
-            }
+        if (payment.checkInDate && payment.payoutDate) {
+            // differenceInDays(a, b) = a − b in whole days
+            // invoiceDay >= −tol  →  invoice is at most tol days before check-in
+            // payoutDay  <=  tol  →  invoice is at most tol days after payout
+            const invoiceDay = differenceInDays(invoice.invoiceDate, payment.checkInDate);
+            const payoutDay  = differenceInDays(invoice.invoiceDate, payment.payoutDate);
+            dateMatch = invoiceDay >= -BOOKING_DATE_TOLERANCE && payoutDay <= BOOKING_DATE_TOLERANCE;
         }
 
         if (dateMatch || refMatch) {
