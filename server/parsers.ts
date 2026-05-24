@@ -242,7 +242,13 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
-    const upsertOps: Prisma.PrismaPromise<unknown>[] = [];
+    let batch: Prisma.BookingPaymentCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.bookingPayment.createMany({ data: batch, skipDuplicates: true });
+        batch = [];
+    }
 
     for await (const row of stream) {
         // First row is the header
@@ -273,34 +279,25 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
 
             if (!ref || !amount) continue;
 
-            upsertOps.push(
-                prisma.bookingPayment.upsert({
-                    where: { referenceNumber: ref },
-                    update: {
-                        checkInDate:  checkIn  ?? undefined,
-                        checkOutDate: checkOut ?? undefined,
-                        payoutDate:   payout   ?? undefined,
-                        amount,
-                    },
-                    create: {
-                        referenceNumber: ref,
-                        checkInDate:  checkIn,   // nullable in schema — no new Date(0) fallback (#11)
-                        checkOutDate: checkOut,
-                        payoutDate:   payout,
-                        amount,
-                    },
-                })
-            );
+            batch.push({
+                referenceNumber: ref,
+                checkInDate:  checkIn,
+                checkOutDate: checkOut,
+                payoutDate:   payout,
+                amount,
+            });
             count++;
             if (checkIn) [minDate, maxDate] = updateDateRange(checkIn, minDate, maxDate);
             if (payout)  [minDate, maxDate] = updateDateRange(payout,  minDate, maxDate);
+
+            if (batch.length >= BATCH_SIZE) await flushBatch();
         } catch (e) {
             console.error('Booking.com row error', row, e);
             logs.push(`Row error: ${e}`);
         }
     }
 
-    await executeBatched(upsertOps); // #10
+    await flushBatch();
     return { type: 'BOOKING', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined, logs };
 }
 
@@ -314,7 +311,13 @@ async function parseIbelsa(filePath: string, encoding: string, delimiter: string
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
-    const upsertOps: Prisma.PrismaPromise<unknown>[] = [];
+    let batch: Prisma.InvoiceCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.invoice.createMany({ data: batch, skipDuplicates: true });
+        batch = [];
+    }
 
     for await (const row of stream) {
         // Dynamic column mapping from header (#14) — replaces hardcoded row[0..5]
@@ -344,30 +347,26 @@ async function parseIbelsa(filePath: string, encoding: string, delimiter: string
             if (!date || !number) continue;
 
             const isCash = type.toLowerCase() === 'bar';
-            upsertOps.push(
-                prisma.invoice.upsert({
-                    where:  { invoiceNumber: number },
-                    update: {},
-                    create: {
-                        invoiceDate:    date,
-                        paymentType:    type,
-                        invoiceNumber:  number,
-                        recipient,
-                        amount,
-                        isReconciled:   isCash,
-                        manualStatus:   isCash,
-                        reconciledDate: isCash ? new Date() : null,
-                    },
-                })
-            );
+            batch.push({
+                invoiceDate:    date,
+                paymentType:    type,
+                invoiceNumber:  number,
+                recipient,
+                amount,
+                isReconciled:   isCash,
+                manualStatus:   isCash,
+                reconciledDate: isCash ? new Date() : null,
+            });
             count++;
             [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
+
+            if (batch.length >= BATCH_SIZE) await flushBatch();
         } catch (e) {
             console.error('Ibelsa row error', row, e);
         }
     }
 
-    await executeBatched(upsertOps); // #10
+    await flushBatch();
     return { type: 'IBELSA', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
 
