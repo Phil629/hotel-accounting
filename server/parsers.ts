@@ -194,36 +194,39 @@ export async function processFile(filePath: string): Promise<ParsedData> {
     console.log(`Processing: ${path.basename(filePath)} [encoding: ${encoding}, delimiter: '${delimiter}']`);
     console.log(`Header: ${header}`);
 
+    const headerLower = header.toLowerCase();
+
     if (
-        (header.includes('Referenznummer') && header.includes('Datum')) ||
-        header.includes('Booking.com') ||
-        (header.includes('Reference number') && header.includes('Payout date'))
+        (headerLower.includes('referenznummer') && headerLower.includes('datum')) ||
+        headerLower.includes('booking.com') ||
+        (headerLower.includes('reference number') && headerLower.includes('payout date')) ||
+        (headerLower.includes('reference number') && headerLower.includes('amount'))
     ) {
         return parseBooking(filePath, encoding, delimiter);
     }
 
     if (
-        (header.includes('Rechnungsdatum') && header.includes('Rechnungsnummer')) ||
-        header.includes('ibelsa')
+        (headerLower.includes('rechnungsdatum') && headerLower.includes('rechnungsnummer')) ||
+        headerLower.includes('ibelsa')
     ) {
         return parseIbelsa(filePath, encoding, delimiter);
     }
 
     if (
-        (header.includes('Buchungstag') && header.includes('Verwendungszweck')) ||
-        header.includes('Valutadatum')
+        (headerLower.includes('buchungstag') && headerLower.includes('verwendungszweck')) ||
+        headerLower.includes('valutadatum')
     ) {
         return parseBank(filePath, encoding, delimiter);
     }
 
     if (
-        (header.includes('Transaktionsdatum') || header.includes('Belegdatum')) &&
-        (header.includes('Umsatz') || header.includes('Betrag'))
+        (headerLower.includes('transaktionsdatum') || headerLower.includes('belegdatum')) &&
+        (headerLower.includes('umsatz') || headerLower.includes('betrag'))
     ) {
         return parseNexi(filePath, encoding, delimiter);
     }
 
-    if (header.includes('Date') && header.includes('Amount')) {
+    if (headerLower.includes('date') && headerLower.includes('amount')) {
         return parseNexi(filePath, encoding, delimiter);
     }
 
