@@ -293,5 +293,5 @@ function extractInvoiceNumber(fullNumber: string): string | null {
     if (!fullNumber) return null;
     const runs = fullNumber.match(/\d+/g);
     if (!runs) return null;
-    return runs.reduce((best, run) => (run.length >= best.length ? run : best));
+    return runs.reduce((best, run) => (run.length > best.length ? run : best));
 }
