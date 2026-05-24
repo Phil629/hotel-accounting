@@ -328,7 +328,7 @@ async function parseIbelsa(filePath: string, encoding: string, delimiter: string
                 type:      h.findIndex(c => c.includes('zahlungsart') || c.includes('typ') || c.includes('art')),
                 number:    h.findIndex(c => c.includes('rechnungsnummer') || c.includes('nummer') || c.includes('nr')),
                 recipient: h.findIndex(c => c.includes('empfänger') || c.includes('empfaenger') || c.includes('name') || c.includes('gast') || c.includes('kunde')),
-                amount:    h.findIndex(c => c.includes('betrag') || c.includes('summe') || c.includes('amount')),
+                amount:    h.findIndex(c => c.includes('betrag') || c.includes('summe') || c.includes('amount') || c.includes('gesamt')),
             };
             if (colMap.date === -1 || colMap.number === -1 || colMap.amount === -1) {
                 console.warn('Ibelsa: critical columns not found in header', h);
