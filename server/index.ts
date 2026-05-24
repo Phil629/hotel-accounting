@@ -110,7 +110,7 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
 
                 await prisma.importedFile.create({
                     data: {
-                        filename:       newFilename,
+                        filename:       file.originalname, // keep original for UNKNOWN
                         originalName:   file.originalname,
                         type:           result.type,
                         recordCount:    result.count,

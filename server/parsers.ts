@@ -198,9 +198,12 @@ export async function processFile(filePath: string): Promise<ParsedData> {
 
     if (
         (headerLower.includes('referenznummer') && headerLower.includes('datum')) ||
+        (headerLower.includes('buchungsnummer') && headerLower.includes('datum')) ||
         headerLower.includes('booking.com') ||
         (headerLower.includes('reference number') && headerLower.includes('payout date')) ||
-        (headerLower.includes('reference number') && headerLower.includes('amount'))
+        (headerLower.includes('booking number') && headerLower.includes('payout date')) ||
+        (headerLower.includes('reference number') && headerLower.includes('amount')) ||
+        (headerLower.includes('booking number') && headerLower.includes('amount'))
     ) {
         return parseBooking(filePath, encoding, delimiter);
     }
@@ -231,7 +234,7 @@ export async function processFile(filePath: string): Promise<ParsedData> {
     }
 
     console.log('Unknown file header — no parser matched.');
-    return { type: 'UNKNOWN', count: 0 };
+    return { type: 'UNKNOWN', count: 0, logs: [`Header: ${header}`] };
 }
 
 // ─── Booking.com ─────────────────────────────────────────────────────────────
