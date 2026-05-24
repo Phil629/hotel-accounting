@@ -118,7 +118,7 @@ function App() {
         {activeTab === 'dashboard' && (
           <div className="space-y-6">
             <FileUpload onUploadComplete={handleUploadComplete} />
-            <Dashboard />
+            <Dashboard key={refreshKey} />
           </div>
         )}
         {activeTab === 'history' && <FileHistory key={refreshKey} />}
