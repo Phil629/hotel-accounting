@@ -204,6 +204,22 @@ function matchBooking(
     return false;
 }
 
+function getCardGroup(name: string): number {
+    const n = name.toLowerCase();
+    if (n.includes('mastercard') || n.includes('eurocard')) return 1;
+    if (n.includes('visa') || n.includes('v pay') || n.includes('v-pay') || n.includes('vpay')) return 2;
+    if (n.includes('ec-karte') || n.includes('girocard') || n.includes('maestro') || n.includes('debit')) return 3;
+    if (n.includes('american express') || n.includes('amex')) return 4;
+    return 0; // Unknown group
+}
+
+function isCardTypeMismatch(invType: string, payType: string): boolean {
+    const g1 = getCardGroup(invType);
+    const g2 = getCardGroup(payType);
+    if (g1 === 0 || g2 === 0) return false; // If we can't categorize one, assume no mismatch to be safe
+    return g1 !== g2;
+}
+
 function matchCard(
     invoice: Invoice,
     invoiceCents: number,
@@ -211,21 +227,44 @@ function matchCard(
     matchedIds: Set<number>,
     results: MatchRecord[],
 ): boolean {
-    for (const payment of getCandidates(index, invoiceCents)) {
-        if (matchedIds.has(payment.id)) continue;
+    const candidates = getCandidates(index, invoiceCents);
 
+    // Phase 1: Exact date match
+    for (const payment of candidates) {
+        if (matchedIds.has(payment.id)) continue;
         const diffDays = Math.abs(differenceInDays(invoice.invoiceDate, payment.transactionDate));
-        if (diffDays <= DATE_TOLERANCE_DAYS) {
+        if (diffDays === 0) {
             matchedIds.add(payment.id);
+            const mismatch = isCardTypeMismatch(invoice.paymentType, payment.cardType);
+            
             results.push({
                 invoiceId:     invoice.id,
                 cardPaymentId: payment.id,
-                matchType:     'AUTOMATIC',
-                confidence:    0.9,
+                matchType:     mismatch ? 'SUGGESTED_MISMATCH' : 'AUTOMATIC',
+                confidence:    mismatch ? 0.70 : 0.95,
             });
-            return true;
+            return !mismatch; // If mismatch, return false so invoice isReconciled stays false!
         }
     }
+
+    // Phase 2: Fallback with tolerance
+    for (const payment of candidates) {
+        if (matchedIds.has(payment.id)) continue;
+        const diffDays = Math.abs(differenceInDays(invoice.invoiceDate, payment.transactionDate));
+        if (diffDays <= DATE_TOLERANCE_DAYS) {
+            matchedIds.add(payment.id);
+            const mismatch = isCardTypeMismatch(invoice.paymentType, payment.cardType);
+            
+            results.push({
+                invoiceId:     invoice.id,
+                cardPaymentId: payment.id,
+                matchType:     mismatch ? 'SUGGESTED_MISMATCH' : 'AUTOMATIC',
+                confidence:    mismatch ? 0.60 : 0.85,
+            });
+            return !mismatch; // If mismatch, return false so invoice isReconciled stays false!
+        }
+    }
+
     return false;
 }
 

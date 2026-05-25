@@ -116,6 +116,11 @@ td {
   color: #166534;
 }
 
+.status-suggested {
+  background-color: #fef08a;
+  color: #854d0e;
+}
+
 .status-unmatched {
   background-color: #fee2e2;
   color: #991b1b;

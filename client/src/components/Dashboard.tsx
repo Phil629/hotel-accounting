@@ -303,15 +303,17 @@ export const Dashboard: React.FC = () => {
     const getMatchDetails = (inv: Invoice): string => {
         if (!inv.matches || inv.matches.length === 0) return '';
         const match = inv.matches[0];
+        const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
+        const prefix = isSuggestion ? 'Vorschlag: ' : '';
 
         if (match.bookingPayment) {
-            return `Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
+            return `${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
         }
         if (match.cardPayment) {
-            return `Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
+            return `${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
         }
         if (match.bankTransaction) {
-            return `Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
+            return `${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
         }
         return "Matched";
     };
@@ -715,6 +717,8 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
     let rowColor = 'transparent';
     let textColor = 'inherit';
 
+    const hasMismatchSuggestion = !optimisticIsReconciled && !optimisticManualStatus && inv.matches && inv.matches.length > 0 && inv.matches.some(m => m.matchType === 'SUGGESTED_MISMATCH');
+
     if (optimisticIsReconciled || optimisticManualStatus) {
         rowColor = '#bbf7d0'; // Green (Reconciled)
     } else if (inv.dunningStatus === 'Inkasso') {
@@ -729,6 +733,9 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
         rowColor = '#fef3c7'; // Yellow
     } else if (inv.dunningStatus === 'Prüfen') {
         rowColor = '#d1d5db'; // Gray
+    } else if (hasMismatchSuggestion) {
+        rowColor = '#fef08a'; // Yellow (Suggestion)
+        textColor = '#854d0e'; // Dark yellow/brown text
     }
 
     return (
@@ -740,10 +747,10 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>{Number(inv.amount).toFixed(2)} €</td>
             <td>
                 <div className="tooltip-container">
-                    <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : 'status-open'}`}>
-                        {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : 'Open'}
+                    <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : hasMismatchSuggestion ? 'status-suggested' : 'status-open'}`}>
+                        {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : hasMismatchSuggestion ? 'Zahlungsart?' : 'Open'}
                     </span>
-                    {(optimisticIsReconciled || optimisticManualStatus) && (
+                    {(optimisticIsReconciled || optimisticManualStatus || hasMismatchSuggestion) && (
                         <div className="tooltip">
                             {inv.matches && inv.matches.length > 0 ? getMatchDetails(inv) : 'Manuell zugeordnet'}
                         </div>

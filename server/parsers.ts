@@ -478,8 +478,8 @@ async function parseNexi(filePath: string, encoding: string, delimiter: string):
             if (amount === 0 && gross > 0) amount = gross;
             if (!date) { console.warn('Nexi: invalid date, row skipped', row); continue; }
 
-            // SHA-256 deduplication key (#2)
-            const externalHash = buildHash(date.toISOString(), cardType, amount);
+            // SHA-256 deduplication key using the entire row to prevent dropping same-day identical amounts
+            const externalHash = buildHash(row.join('|'));
 
             batch.push({ externalHash, transactionDate: date, cardType, amount, grossAmount: gross || null });
             count++;
