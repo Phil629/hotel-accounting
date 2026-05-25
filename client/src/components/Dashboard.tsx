@@ -223,10 +223,10 @@ export const Dashboard: React.FC = () => {
         });
     }, [invoices, searchTerm, statusFilter]);
 
-    // Group by month (using filtered invoices) - ONLY used when NOT searching/filtering
+    // Group by month (using filtered invoices) - ONLY used when NOT searching
     const groupedInvoices = useMemo(() => {
         const groups: { [key: string]: Invoice[] } = {};
-        if (!searchTerm && !statusFilter) {
+        if (!searchTerm) {
             filteredInvoices.forEach(inv => {
                 const date = new Date(inv.invoiceDate);
                 const monthKey = date.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' });
@@ -242,7 +242,7 @@ export const Dashboard: React.FC = () => {
             });
         }
         return groups;
-    }, [filteredInvoices, searchTerm, statusFilter, sortInvoices]);
+    }, [filteredInvoices, searchTerm, sortInvoices]);
 
     // Sort months chronologically
     const sortedMonths = useMemo(() => {
@@ -428,9 +428,8 @@ export const Dashboard: React.FC = () => {
                 </div>
             )}
 
-            {/* Month Tabs - Hide when searching or filtering */}
-            {/* Month Tabs - Hide when searching or filtering */}
-            {!searchTerm && !statusFilter && (
+            {/* Month Tabs - Hide when searching */}
+            {!searchTerm && (
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
                     {sortedMonths.map(month => {
                         const files = (importStatus as any)[month] || [];
@@ -492,7 +491,7 @@ export const Dashboard: React.FC = () => {
             )}
 
             {/* Content Area */}
-            {(searchTerm || statusFilter) ? (
+            {searchTerm ? (
                 // Search Results View (Flat List)
                 <div style={{ marginBottom: '2rem' }}>
                     <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '1rem' }}>
@@ -762,6 +761,7 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                     type="checkbox"
                     checked={optimisticIsReconciled || optimisticManualStatus}
                     onChange={handleToggle}
+                    style={{ width: '1.25rem', height: '1.25rem', cursor: 'pointer' }}
                 />
             </td>
             <td>
