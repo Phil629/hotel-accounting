@@ -483,7 +483,11 @@ export const Dashboard: React.FC = () => {
                                             ? '✅ Vollständig'
                                             : `${ms.open} offen`}
                                     </div>
-                                ) : null}
+                                ) : (
+                                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
+                                        Keine Rechnungen
+                                    </div>
+                                )}
                             </button>
                         );
                     })}
@@ -540,27 +544,30 @@ export const Dashboard: React.FC = () => {
                 </div>
             ) : (
                 // Month View
-                selectedMonth && groupedInvoices[selectedMonth] && (
+                selectedMonth && (
                     <div key={selectedMonth} style={{ marginBottom: '2rem' }}>
                         <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>{selectedMonth}</h3>
-                        {/* Monthly Summary Bar */}
-                        {monthStatus[selectedMonth] && (
-                            <div style={{
-                                display: 'flex', gap: '1.5rem', marginBottom: '1rem',
-                                padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
-                                backgroundColor: monthStatus[selectedMonth].allDone ? '#d1fae5' : '#fef9c3',
-                                border: `1px solid ${monthStatus[selectedMonth].allDone ? '#6ee7b7' : '#fde047'}`,
-                                fontSize: '0.9rem'
-                            }}>
-                                <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
-                                <span style={{ color: '#065f46' }}>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen — Summe: <strong>{monthStatus[selectedMonth].closedSum.toFixed(2)} €</strong></span>
-                                {monthStatus[selectedMonth].open > 0 && (
-                                    <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
+                        
+                        {groupedInvoices[selectedMonth] ? (
+                            <>
+                                {/* Monthly Summary Bar */}
+                                {monthStatus[selectedMonth] && (
+                                    <div style={{
+                                        display: 'flex', gap: '1.5rem', marginBottom: '1rem',
+                                        padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
+                                        backgroundColor: monthStatus[selectedMonth].allDone ? '#d1fae5' : '#fef9c3',
+                                        border: `1px solid ${monthStatus[selectedMonth].allDone ? '#6ee7b7' : '#fde047'}`,
+                                        fontSize: '0.9rem'
+                                    }}>
+                                        <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
+                                        <span style={{ color: '#065f46' }}>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen — Summe: <strong>{monthStatus[selectedMonth].closedSum.toFixed(2)} €</strong></span>
+                                        {monthStatus[selectedMonth].open > 0 && (
+                                            <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
+                                        )}
+                                        {monthStatus[selectedMonth].allDone && <span>🎉 Monat vollständig abgeglichen!</span>}
+                                    </div>
                                 )}
-                                {monthStatus[selectedMonth].allDone && <span>🎉 Monat vollständig abgeglichen!</span>}
-                            </div>
-                        )}
-                        <div className="card table-container">
+                                <div className="card table-container">
                             <table>
                                 <thead>
                                     <tr>
@@ -600,6 +607,12 @@ export const Dashboard: React.FC = () => {
                                 </tbody>
                             </table>
                         </div>
+                            </>
+                        ) : (
+                            <div style={{ padding: '3rem', textAlign: 'center', backgroundColor: '#f9fafb', borderRadius: 'var(--radius)', border: '1px dashed #d1d5db', color: '#6b7280' }}>
+                                Für diesen Monat wurden (noch) keine Rechnungen hochgeladen. Bitte lade zunächst eine XML-Datei mit den offenen Rechnungen in der Hotelsoftware hoch.
+                            </div>
+                        )}
                     </div>
                 )
             )}
