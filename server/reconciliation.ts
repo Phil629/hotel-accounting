@@ -126,20 +126,34 @@ export async function runReconciliation() {
 
     const matchesToCreate: MatchRecord[] = [];
     const invoiceIdsToReconcile: number[] = [];
+    const matchedInvoiceIds = new Set<number>();
+    const invoicesWithSuggestions = new Set<number>();
 
-    for (const invoice of invoices) {
-        const cents = toCents(invoice.amount);
-        let matched = false;
+    for (let pass = 1; pass <= 4; pass++) {
+        for (const invoice of invoices) {
+            if (matchedInvoiceIds.has(invoice.id) || invoicesWithSuggestions.has(invoice.id)) {
+                continue;
+            }
 
-        if (invoice.paymentType.toLowerCase().includes('booking.com')) {
-            matched = matchBooking(invoice, cents, bookingIndex, matchedBookingIds, matchesToCreate);
-        } else if (isCardPayment(invoice.paymentType)) {
-            matched = matchCard(invoice, cents, cardIndex, matchedCardIds, matchesToCreate);
-        } else if (invoice.paymentType.toLowerCase().includes('bank')) {
-            matched = matchBank(invoice, cents, bankIndex, matchedBankIds, matchesToCreate);
+            const cents = toCents(invoice.amount);
+            let result: 'NONE' | 'AUTOMATIC' | 'SUGGESTED_MISMATCH' = 'NONE';
+
+            if (invoice.paymentType.toLowerCase().includes('booking.com')) {
+                result = matchBooking(invoice, cents, bookingIndex, matchedBookingIds, matchesToCreate, pass);
+            } else if (isCardPayment(invoice.paymentType)) {
+                result = matchCard(invoice, cents, cardIndex, matchedCardIds, matchesToCreate, pass);
+            } else if (invoice.paymentType.toLowerCase().includes('bank')) {
+                result = matchBank(invoice, cents, bankIndex, matchedBankIds, matchesToCreate, pass);
+            }
+
+            if (result === 'AUTOMATIC') {
+                matchedInvoiceIds.add(invoice.id);
+                invoiceIdsToReconcile.push(invoice.id);
+            } else if (result === 'SUGGESTED_MISMATCH') {
+                invoicesWithSuggestions.add(invoice.id);
+                // We do NOT add to invoiceIdsToReconcile because it needs manual approval!
+            }
         }
-
-        if (matched) invoiceIdsToReconcile.push(invoice.id);
     }
 
     if (matchesToCreate.length > 0) {
@@ -166,7 +180,8 @@ function matchBooking(
     index: Map<number, BookingWithMatches[]>,
     matchedIds: Set<number>,
     results: MatchRecord[],
-): boolean {
+    pass: number
+): 'NONE' | 'AUTOMATIC' | 'SUGGESTED_MISMATCH' {
     for (const payment of getCandidates(index, invoiceCents)) {
         if (matchedIds.has(payment.id)) continue;
 
@@ -190,7 +205,11 @@ function matchBooking(
             dateMatch = invoiceDay >= -BOOKING_DATE_TOLERANCE && payoutDay <= BOOKING_DATE_TOLERANCE;
         }
 
-        if (dateMatch || refMatch) {
+        let shouldMatch = false;
+        if (pass === 1 && refMatch) shouldMatch = true;
+        else if (pass === 2 && dateMatch) shouldMatch = true;
+
+        if (shouldMatch) {
             matchedIds.add(payment.id);
             results.push({
                 invoiceId:        invoice.id,
@@ -198,10 +217,10 @@ function matchBooking(
                 matchType:        refMatch ? 'MANUAL_REF' : 'AUTOMATIC',
                 confidence:       refMatch ? 1.0 : 0.85,
             });
-            return true;
+            return 'AUTOMATIC';
         }
     }
-    return false;
+    return 'NONE';
 }
 
 function getCardGroup(name: string): number {
@@ -226,46 +245,35 @@ function matchCard(
     index: Map<number, CardWithMatches[]>,
     matchedIds: Set<number>,
     results: MatchRecord[],
-): boolean {
+    pass: number
+): 'NONE' | 'AUTOMATIC' | 'SUGGESTED_MISMATCH' {
     const candidates = getCandidates(index, invoiceCents);
 
-    // Phase 1: Exact date match
     for (const payment of candidates) {
         if (matchedIds.has(payment.id)) continue;
         const diffDays = Math.abs(differenceInDays(invoice.invoiceDate, payment.transactionDate));
-        if (diffDays === 0) {
+        const mismatch = isCardTypeMismatch(invoice.paymentType, payment.cardType);
+
+        let shouldMatch = false;
+        
+        if (pass === 1 && diffDays === 0 && !mismatch) shouldMatch = true;
+        else if (pass === 2 && diffDays === 0 && mismatch) shouldMatch = true;
+        else if (pass === 3 && diffDays <= DATE_TOLERANCE_DAYS && !mismatch) shouldMatch = true;
+        else if (pass === 4 && diffDays <= DATE_TOLERANCE_DAYS && mismatch) shouldMatch = true;
+
+        if (shouldMatch) {
             matchedIds.add(payment.id);
-            const mismatch = isCardTypeMismatch(invoice.paymentType, payment.cardType);
-            
             results.push({
                 invoiceId:     invoice.id,
                 cardPaymentId: payment.id,
                 matchType:     mismatch ? 'SUGGESTED_MISMATCH' : 'AUTOMATIC',
-                confidence:    mismatch ? 0.70 : 0.95,
+                confidence:    mismatch ? (pass === 2 ? 0.70 : 0.60) : (pass === 1 ? 0.95 : 0.85),
             });
-            return !mismatch; // If mismatch, return false so invoice isReconciled stays false!
+            return mismatch ? 'SUGGESTED_MISMATCH' : 'AUTOMATIC';
         }
     }
 
-    // Phase 2: Fallback with tolerance
-    for (const payment of candidates) {
-        if (matchedIds.has(payment.id)) continue;
-        const diffDays = Math.abs(differenceInDays(invoice.invoiceDate, payment.transactionDate));
-        if (diffDays <= DATE_TOLERANCE_DAYS) {
-            matchedIds.add(payment.id);
-            const mismatch = isCardTypeMismatch(invoice.paymentType, payment.cardType);
-            
-            results.push({
-                invoiceId:     invoice.id,
-                cardPaymentId: payment.id,
-                matchType:     mismatch ? 'SUGGESTED_MISMATCH' : 'AUTOMATIC',
-                confidence:    mismatch ? 0.60 : 0.85,
-            });
-            return !mismatch; // If mismatch, return false so invoice isReconciled stays false!
-        }
-    }
-
-    return false;
+    return 'NONE';
 }
 
 function matchBank(
@@ -274,7 +282,8 @@ function matchBank(
     index: Map<number, BankWithMatches[]>,
     matchedIds: Set<number>,
     results: MatchRecord[],
-): boolean {
+    pass: number
+): 'NONE' | 'AUTOMATIC' | 'SUGGESTED_MISMATCH' {
     for (const payment of getCandidates(index, invoiceCents)) {
         if (matchedIds.has(payment.id)) continue;
 
@@ -292,7 +301,14 @@ function matchBank(
             !!payment.description &&
             payment.description.includes(invoiceNum);
 
-        if (nameMatch || descMatch) {
+        let shouldMatch = false;
+        
+        // Pass 1: Strict match (description match)
+        if (pass === 1 && descMatch) shouldMatch = true;
+        // Pass 2: Name match
+        else if (pass === 2 && nameMatch) shouldMatch = true;
+
+        if (shouldMatch) {
             matchedIds.add(payment.id);
             results.push({
                 invoiceId:         invoice.id,
@@ -300,10 +316,10 @@ function matchBank(
                 matchType:         descMatch ? 'MANUAL_REF' : 'AUTOMATIC',
                 confidence:        descMatch ? 1.0 : 0.8,
             });
-            return true;
+            return 'AUTOMATIC';
         }
     }
-    return false;
+    return 'NONE';
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
