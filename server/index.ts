@@ -308,7 +308,12 @@ app.delete('/api/invoices/by-month', requireAdminKey, async (req, res) => {
         await prisma.$transaction([
             prisma.reconciliationMatch.deleteMany({ where: { invoiceId: { in: ids } } }),
             prisma.invoice.deleteMany({ where: { id: { in: ids } } }),
-            prisma.importedFile.deleteMany({ where: { dateRangeStart: { gte: start, lt: end } } })
+            prisma.importedFile.deleteMany({ where: { dateRangeStart: { gte: start, lt: end } } }),
+            prisma.pmsPayment.deleteMany({ where: { paymentDate: { gte: start, lt: end } } }),
+            prisma.bankTransaction.deleteMany({ where: { bookingDate: { gte: start, lt: end } } }),
+            prisma.cardPayment.deleteMany({ where: { transactionDate: { gte: start, lt: end } } }),
+            prisma.bookingPayment.deleteMany({ where: { bookingDate: { gte: start, lt: end } } }),
+            prisma.roomReservation.deleteMany({ where: { checkIn: { gte: start, lt: end } } })
         ]);
 
         res.json({ success: true, deleted: ids.length });
