@@ -9,7 +9,7 @@ import prisma from './db';
 const BATCH_SIZE = 500;
 
 interface ParsedData {
-    type: 'BOOKING' | 'IBELSA' | 'BANK' | 'NEXI' | 'UNKNOWN';
+    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'UNKNOWN';
     count: number;
     dateRangeStart?: Date;
     dateRangeEnd?: Date;
@@ -208,11 +208,16 @@ export async function processFile(filePath: string): Promise<ParsedData> {
         return parseBooking(filePath, encoding, delimiter);
     }
 
-    if (
-        (headerLower.includes('rechnungsdatum') && headerLower.includes('rechnungsnummer')) ||
-        headerLower.includes('ibelsa')
-    ) {
-        return parseIbelsa(filePath, encoding, delimiter);
+    if (headerLower.includes('rechnungsnummer') && headerLower.includes('brutto betrag')) {
+        return parseRechnungsbericht(filePath, encoding, delimiter);
+    }
+
+    if (headerLower.includes('rechnungsdatum') && headerLower.includes('gesamt') && headerLower.includes('zahlungsart')) {
+        return parseZahlungsbericht(filePath, encoding, delimiter);
+    }
+
+    if (headerLower.includes('zimmername') && headerLower.includes('anreise') && headerLower.includes('pax')) {
+        return parseZimmeruebersicht(filePath, encoding, delimiter);
     }
 
     if (
@@ -307,13 +312,13 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
     return { type: 'BOOKING', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined, logs };
 }
 
-// ─── Ibelsa ──────────────────────────────────────────────────────────────────
+// ─── Ibelsa Exports ──────────────────────────────────────────────────────────
 
-async function parseIbelsa(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+async function parseRechnungsbericht(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
     const stream = buildCsvStream(filePath, encoding, delimiter);
 
     let headerMapped = false;
-    let colMap = { date: -1, type: -1, number: -1, recipient: -1, amount: -1 };
+    let colMap = { date: -1, number: -1, recipient: -1, amount: -1 };
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
@@ -326,19 +331,74 @@ async function parseIbelsa(filePath: string, encoding: string, delimiter: string
     }
 
     for await (const row of stream) {
-        // Dynamic column mapping from header (#14) — replaces hardcoded row[0..5]
         if (!headerMapped) {
             const h = row.map(c => c.toLowerCase().trim());
             colMap = {
-                date:      h.findIndex(c => c.includes('rechnungsdatum') || c.includes('datum')),
-                type:      h.findIndex(c => c.includes('zahlungsart') || c.includes('typ') || c.includes('art')),
-                number:    h.findIndex(c => c.includes('rechnungsnummer') || c.includes('nummer') || c.includes('nr')),
-                recipient: h.findIndex(c => c.includes('empfänger') || c.includes('empfaenger') || c.includes('name') || c.includes('gast') || c.includes('kunde')),
-                amount:    h.findIndex(c => c.includes('betrag') || c.includes('summe') || c.includes('amount') || c.includes('gesamt')),
+                date:      h.findIndex(c => c === 'datum'),
+                number:    h.findIndex(c => c === 'rechnungsnummer'),
+                recipient: h.findIndex(c => c === 'rechnungsempfänger' || c === 'rechnungsempfaenger'),
+                amount:    h.findIndex(c => c === 'brutto betrag'),
             };
-            if (colMap.date === -1 || colMap.number === -1 || colMap.amount === -1) {
-                console.warn('Ibelsa: critical columns not found in header', h);
-            }
+            headerMapped = true;
+            continue;
+        }
+
+        try {
+            const date      = colMap.date      > -1 ? parseDate(row[colMap.date])        : null;
+            const number    = colMap.number    > -1 ? row[colMap.number]?.trim()          : '';
+            const recipient = colMap.recipient > -1 ? row[colMap.recipient]?.trim() ?? '' : '';
+            const amount    = colMap.amount    > -1 ? parseAmount(row[colMap.amount])     : 0;
+
+            if (!date || !number || amount === 0) continue;
+
+            batch.push({
+                invoiceDate:    date,
+                paymentType:    '',
+                invoiceNumber:  number,
+                recipient,
+                amount,
+                amountPaid:     0,
+                status:         'OPEN'
+            });
+            count++;
+            [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
+
+            if (batch.length >= BATCH_SIZE) await flushBatch();
+        } catch (e) {
+            console.error('Rechnungsbericht row error', row, e);
+        }
+    }
+
+    await flushBatch();
+    return { type: 'RECHNUNGSBERICHT', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
+}
+
+async function parseZahlungsbericht(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
+
+    let headerMapped = false;
+    let colMap = { date: -1, type: -1, number: -1, recipient: -1, amount: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    let batch: Prisma.PmsPaymentCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.pmsPayment.createMany({ data: batch, skipDuplicates: true });
+        batch = [];
+    }
+
+    for await (const row of stream) {
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                date:      h.findIndex(c => c.includes('rechnungsdatum')),
+                type:      h.findIndex(c => c.includes('zahlungsart')),
+                number:    h.findIndex(c => c.includes('rechnungsnummer')),
+                recipient: h.findIndex(c => c.includes('rechnungsempfänger') || c.includes('rechnungsempfaenger')),
+                amount:    h.findIndex(c => c.includes('gesamt')),
+            };
             headerMapped = true;
             continue;
         }
@@ -346,34 +406,121 @@ async function parseIbelsa(filePath: string, encoding: string, delimiter: string
         try {
             const date      = colMap.date      > -1 ? parseDate(row[colMap.date])        : null;
             const type      = colMap.type      > -1 ? row[colMap.type]?.trim()            : '';
-            const number    = colMap.number    > -1 ? row[colMap.number]?.trim()          : '';
+            let number      = colMap.number    > -1 ? row[colMap.number]?.trim()          : '';
             const recipient = colMap.recipient > -1 ? row[colMap.recipient]?.trim() ?? '' : '';
             const amount    = colMap.amount    > -1 ? parseAmount(row[colMap.amount])     : 0;
 
-            if (!date || !number) continue;
+            if (!date || amount === 0) continue;
+            
+            if (number.includes('Rechnung')) {
+                const match = number.match(/Rechnung\s+(\d+)/);
+                if (match) {
+                    number = match[1];
+                }
+            }
 
-            const isCash = type.toLowerCase() === 'bar';
             batch.push({
-                invoiceDate:    date,
+                paymentDate:    date,
                 paymentType:    type,
                 invoiceNumber:  number,
                 recipient,
-                amount,
-                isReconciled:   isCash,
-                manualStatus:   isCash,
-                reconciledDate: isCash ? new Date() : null,
+                amount
             });
             count++;
             [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
 
             if (batch.length >= BATCH_SIZE) await flushBatch();
         } catch (e) {
-            console.error('Ibelsa row error', row, e);
+            console.error('Zahlungsbericht row error', row, e);
         }
     }
 
     await flushBatch();
-    return { type: 'IBELSA', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
+    return { type: 'ZAHLUNGSBERICHT', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
+}
+
+async function parseZimmeruebersicht(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
+
+    let headerMapped = false;
+    let colMap = { category: -1, roomName: -1, checkIn: -1, checkOut: -1, nights: -1, guestName: -1, pax: -1, price: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    let batch: Prisma.RoomReservationCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.roomReservation.createMany({ data: batch, skipDuplicates: true });
+        batch = [];
+    }
+
+    for await (const row of stream) {
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                category:  h.findIndex(c => c === 'kategorie'),
+                roomName:  h.findIndex(c => c === 'zimmername'),
+                checkIn:   h.findIndex(c => c === 'anreise'),
+                checkOut:  h.findIndex(c => c === 'abreise'),
+                nights:    h.findIndex(c => c === 'tage'),
+                guestName: h.findIndex(c => c === 'gastname'),
+                pax:       h.findIndex(c => c === 'pax'),
+                price:     h.findIndex(c => c === 'preis')
+            };
+            headerMapped = true;
+            continue;
+        }
+
+        try {
+            const category  = colMap.category  > -1 ? row[colMap.category]?.trim() : '';
+            const roomName  = colMap.roomName  > -1 ? row[colMap.roomName]?.trim() : '';
+            const checkIn   = colMap.checkIn   > -1 ? parseDate(row[colMap.checkIn]) : null;
+            const checkOut  = colMap.checkOut  > -1 ? parseDate(row[colMap.checkOut]) : null;
+            const nights    = colMap.nights    > -1 ? parseInt(row[colMap.nights], 10) : 0;
+            const guestName = colMap.guestName > -1 ? row[colMap.guestName]?.trim() : '';
+            const pax       = colMap.pax       > -1 ? parseInt(row[colMap.pax], 10) : 0;
+            const price     = colMap.price     > -1 ? parseAmount(row[colMap.price]) : 0;
+
+            if (!checkIn || !roomName) continue;
+
+            const isAirbnb = roomName === '507';
+            let cityTax = null;
+
+            if (nights > 0 && pax > 0 && price > 0) {
+                const pricePerNightPerPerson = price / nights / pax;
+                let taxPerNight = 0;
+                if (pricePerNightPerPerson >= 20 && pricePerNightPerPerson < 50) taxPerNight = 2;
+                else if (pricePerNightPerPerson >= 50 && pricePerNightPerPerson < 100) taxPerNight = 3;
+                else if (pricePerNightPerPerson >= 100 && pricePerNightPerPerson < 200) taxPerNight = 4;
+                else if (pricePerNightPerPerson >= 200) taxPerNight = 5;
+                
+                cityTax = taxPerNight * nights * pax;
+            }
+
+            batch.push({
+                category,
+                roomName,
+                checkIn,
+                checkOut,
+                nights,
+                guestName,
+                pax,
+                price,
+                cityTax,
+                isAirbnb
+            });
+            count++;
+            [minDate, maxDate] = updateDateRange(checkIn, minDate, maxDate);
+
+            if (batch.length >= BATCH_SIZE) await flushBatch();
+        } catch (e) {
+            console.error('Zimmeruebersicht row error', row, e);
+        }
+    }
+
+    await flushBatch();
+    return { type: 'ZIMMERUEBERSICHT', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
 
 // ─── Bank ─────────────────────────────────────────────────────────────────────
