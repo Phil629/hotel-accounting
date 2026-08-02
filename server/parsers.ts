@@ -107,7 +107,8 @@ function parseDate(dateStr: string): Date | null {
             } else {
                 const day   = parseInt(parts[0], 10);
                 const month = parseInt(parts[1], 10) - 1;
-                const year  = parseInt(parts[2], 10);
+                let   year  = parseInt(parts[2], 10);
+                if (year < 100) year += 2000;
                 if (!isNaN(day) && !isNaN(month) && !isNaN(year)) return new Date(year, month, day);
             }
         }
@@ -137,6 +138,7 @@ function parseDate(dateStr: string): Date | null {
 
 function parseAmount(amountStr: string): number {
     if (!amountStr) return 0;
+    const isNegative = amountStr.trim().endsWith('-');
     let clean = amountStr.replace(/[^\d,.-]/g, '').trim();
     if (!clean) return 0;
 
@@ -158,7 +160,11 @@ function parseAmount(amountStr: string): number {
     }
 
     const result = parseFloat(clean);
-    return isNaN(result) ? 0 : result;
+    if (isNaN(result)) return 0;
+    
+    // Fix trailing minus sign being ignored by parseFloat
+    if (isNegative && result > 0) return -result;
+    return result;
 }
 
 function buildHash(...parts: (string | number | null | undefined)[]): string {

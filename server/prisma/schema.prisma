@@ -105,7 +105,7 @@ model CardPayment {
 model ReconciliationMatch {
   id                Int      @id @default(autoincrement())
   invoiceId         Int
-  invoice           Invoice  @relation(fields: [invoiceId], references: [id])
+  invoice           Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   // Polymorphic-like relation (exactly one of these should be set)
   bankTransactionId Int?
@@ -124,6 +124,15 @@ model ReconciliationMatch {
   pmsPayment        PmsPayment? @relation(fields: [pmsPaymentId], references: [id])
 
   createdAt         DateTime @default(now())
+
+  @@unique([bankTransactionId])
+  @@unique([bookingPaymentId])
+  @@unique([cardPaymentId])
+  @@index([invoiceId])
+  @@index([bankTransactionId])
+  @@index([bookingPaymentId])
+  @@index([cardPaymentId])
+  @@index([pmsPaymentId])
 }
 
 model ImportedFile {
@@ -147,7 +156,7 @@ model PmsPayment {
   amount            Decimal  @db.Decimal(12, 2)
   
   invoiceId         Int?
-  invoice           Invoice? @relation(fields: [invoiceId], references: [id])
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
   matches           ReconciliationMatch[]
 
   createdAt         DateTime @default(now())
@@ -170,7 +179,7 @@ model RoomReservation {
   isAirbnb          Boolean  @default(false)
   
   invoiceId         Int?
-  invoice           Invoice? @relation(fields: [invoiceId], references: [id])
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt

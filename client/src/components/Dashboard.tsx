@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { api } from '../api';
 import { Toast } from './Toast';
 import type { ToastProps } from './Toast';
@@ -11,6 +11,7 @@ interface RoomReservation {
     days: number;
     pax: number;
     totalPrice: number;
+    cityTax?: number;
     isAirbnb: boolean;
 }
 
@@ -41,17 +42,7 @@ interface Invoice {
     dunningDate?: string;
 }
 
-function calculateCitytax(res: RoomReservation): number {
-    if (res.pax === 0 || res.days === 0) return 0;
-    const pricePerPersonPerNight = Number(res.totalPrice) / res.pax / res.days;
-    let tax = 0;
-    if (pricePerPersonPerNight >= 20 && pricePerPersonPerNight < 50) tax = 2;
-    else if (pricePerPersonPerNight >= 50 && pricePerPersonPerNight < 100) tax = 3;
-    else if (pricePerPersonPerNight >= 100 && pricePerPersonPerNight < 200) tax = 4;
-    else if (pricePerPersonPerNight >= 200) tax = 5;
-    
-    return tax * res.pax * res.days;
-}
+
 
 type SortField = 'date' | 'number' | 'recipient' | 'type' | 'amount' | 'status';
 type SortDirection = 'asc' | 'desc';
@@ -158,12 +149,18 @@ export const Dashboard: React.FC = () => {
     };
 
     const handleCommentChange = useCallback((id: number, newComment: string) => {
-        api.updateComment(id, newComment);
+        api.updateComment(id, newComment).catch(e => {
+            console.error('Failed to update comment:', e);
+            showToast('Fehler beim Speichern des Kommentars', 'error');
+        });
         setInvoices(prev => prev.map(i => i.id === id ? { ...i, comment: newComment } : i));
     }, []);
 
     const handleDunningUpdate = useCallback((id: number, status: string, method: string, date: string) => {
-        api.updateDunning(id, status, method, date);
+        api.updateDunning(id, status, method, date).catch(e => {
+            console.error('Failed to update dunning:', e);
+            showToast('Fehler beim Speichern der Mahnung', 'error');
+        });
         setInvoices(prev => prev.map(i => i.id === id ? { ...i, dunningStatus: status, dunningMethod: method, dunningDate: date } : i));
     }, []);
 
@@ -282,8 +279,8 @@ export const Dashboard: React.FC = () => {
     const sortedMonths = useMemo(() => {
         const allMonths = new Set([...Object.keys(groupedInvoices), ...Object.keys(importStatus)]);
         return Array.from(allMonths).sort((a, b) => {
-            const dateA = new Date(`1 ${a}`);
-            const dateB = new Date(`1 ${b}`);
+            const dateA = new Date(monthNameToYYYYMM(a) + "-01");
+            const dateB = new Date(monthNameToYYYYMM(b) + "-01");
             return dateB.getTime() - dateA.getTime();
         });
     }, [groupedInvoices, importStatus]);
@@ -319,13 +316,15 @@ export const Dashboard: React.FC = () => {
                 let invTax = 0;
                 if (inv.roomReservations) {
                     for (const res of inv.roomReservations) {
-                        invTax += calculateCitytax(res);
+                        invTax += Number(res.cityTax || 0);
                     }
                 }
                 generated += invTax;
-                // If invoice is fully paid, or reconciled, or manually verified, consider citytax paid
+                
                 if (inv.status === 'PAID' || inv.isReconciled || inv.manualStatus) {
                     paid += invTax;
+                } else if (inv.status === 'PARTIAL' && Number(inv.amount) > 0) {
+                    paid += invTax * (Number(inv.amountPaid) / Number(inv.amount));
                 }
             }
         }
@@ -358,20 +357,22 @@ export const Dashboard: React.FC = () => {
 
     const getMatchDetails = (inv: Invoice): string => {
         if (!inv.matches || inv.matches.length === 0) return '';
-        const match = inv.matches[0];
-        const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
-        const prefix = isSuggestion ? 'Vorschlag: ' : '';
-
-        if (match.bookingPayment) {
-            return `${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
-        }
-        if (match.cardPayment) {
-            return `${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
-        }
-        if (match.bankTransaction) {
-            return `${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
-        }
-        return "Matched";
+        
+        return inv.matches.map(match => {
+            const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
+            const prefix = isSuggestion ? 'Vorschlag: ' : '';
+    
+            if (match.bookingPayment) {
+                return `${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
+            }
+            if (match.cardPayment) {
+                return `${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
+            }
+            if (match.bankTransaction) {
+                return `${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
+            }
+            return "Matched";
+        }).join(' | ');
     };
 
     const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
@@ -779,12 +780,27 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
     // Optimistic UI State
     const [optimisticManualStatus, setOptimisticManualStatus] = useState(inv.manualStatus);
     const [optimisticIsReconciled, setOptimisticIsReconciled] = useState(inv.isReconciled);
+    const [commentValue, setCommentValue] = useState(inv.comment || '');
+    const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Sync with props when they change (e.g. after refresh or initial load)
     useEffect(() => {
         setOptimisticManualStatus(inv.manualStatus);
         setOptimisticIsReconciled(inv.isReconciled);
     }, [inv.manualStatus, inv.isReconciled]);
+
+    useEffect(() => {
+        setCommentValue(inv.comment || '');
+    }, [inv.comment]);
+
+    const handleCommentChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = e.target.value;
+        setCommentValue(val);
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+        debounceTimer.current = setTimeout(() => {
+            onCommentChange(inv.id, val);
+        }, 500);
+    };
 
     const handleToggle = () => {
         // 1. Immediate Visual Feedback
@@ -861,8 +877,8 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
                     <input
                         type="text"
-                        value={inv.comment || ''}
-                        onChange={(e) => onCommentChange(inv.id, e.target.value)}
+                        value={commentValue}
+                        onChange={handleCommentChange}
                         placeholder="Kommentar..."
                         style={{ width: '100%', padding: '0.25rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.8rem', color: 'black' }}
                     />

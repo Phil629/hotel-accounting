@@ -46,14 +46,24 @@ function differenceInDays(d1: Date, d2: Date): number {
 
 function extractInvoiceNumber(fullNumber: string | null | undefined): string | null {
     if (!fullNumber) return null;
-    const runs = fullNumber.match(/\d+/g);
+    const exactMatch = fullNumber.match(/Rechnung\s+(\d+)/i);
+    if (exactMatch) return exactMatch[1];
+    
+    const currentYear = new Date().getFullYear().toString();
+    const withoutYear = fullNumber.replace(new RegExp(`\\b${currentYear}\\b`, 'g'), '');
+    const runs = withoutYear.match(/\d+/g) || fullNumber.match(/\d+/g);
     if (!runs) return null;
     return runs.reduce((best, run) => (run.length > best.length ? run : best));
 }
 
 function cleanName(name: string | null | undefined): string {
     if (!name) return '';
-    return name.toLowerCase().replace(/[^a-z0-9]/g, '');
+    return name.toLowerCase()
+        .replace(/ä/g, 'ae')
+        .replace(/ö/g, 'oe')
+        .replace(/ü/g, 'ue')
+        .replace(/ß/g, 'ss')
+        .replace(/[^a-z0-9]/g, '');
 }
 
 // ─── Main Entry Point ─────────────────────────────────────────────────────────
@@ -162,12 +172,13 @@ export async function runReconciliation() {
     const matchedBookingIds = new Set<number>();
     const matchedCardIds    = new Set<number>();
     const matchedBankIds    = new Set<number>();
+    const matchedPmsIds     = new Set<number>();
 
     const matchesToCreate: MatchRecord[] = [];
 
     for (let pass = 1; pass <= 4; pass++) {
         for (const pms of pmsPaymentsToMatch) {
-            if (matchesToCreate.find(m => m.pmsPaymentId === pms.id)) continue;
+            if (matchedPmsIds.has(pms.id)) continue;
             
             if (pms.paymentType.toLowerCase().includes('bar')) {
                 if (pass === 1 && pms.invoiceId) {
@@ -177,14 +188,14 @@ export async function runReconciliation() {
                         matchType: 'AUTOMATIC',
                         confidence: 1.0
                     });
+                    matchedPmsIds.add(pms.id);
                 }
                 continue;
             }
 
             const cents = toCents(pms.amount);
+            const isAirbnb = pms.invoice?.roomReservations?.some(r => r.isAirbnb) ?? false;
             let matched = false;
-            
-            const isAirbnb = pms.invoice?.roomReservations.some(r => r.isAirbnb);
 
             if (isAirbnb || pms.paymentType.toLowerCase().includes('banküberweisung') || pms.paymentType.toLowerCase().includes('überweisung')) {
                 matched = matchBank(pms, cents, bankIndex, matchedBankIds, matchesToCreate, pass);
@@ -193,6 +204,8 @@ export async function runReconciliation() {
             } else if (isCardPayment(pms.paymentType)) {
                 matched = matchCard(pms, cents, cardIndex, matchedCardIds, matchesToCreate, pass);
             }
+
+            if (matched) matchedPmsIds.add(pms.id);
         }
     }
 
@@ -370,6 +383,11 @@ function isCardPayment(type: string): boolean {
         t.includes('visa')         ||
         t.includes('mastercard')   ||
         t.includes('maestro')      ||
+        t.includes('american express') ||
+        t.includes('amex')         ||
+        t.includes('v pay')        ||
+        t.includes('v-pay')        ||
+        t.includes('girocard')     ||
         t.includes('visa electron')
     );
 }

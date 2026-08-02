@@ -1,0 +1,52 @@
+{
+  "name": "hotel-accounting-automation",
+  "version": "1.0.0",
+  "main": "electron.js",
+  "scripts": {
+    "start": "electron .",
+    "start:web": "cd server && node dist/index.js",
+    "build:web": "cd client && npm install && npm run build && cd ../server && npm install && npx prisma generate && npm run build",
+    "dist": "electron-builder --win"
+  },
+  "build": {
+    "appId": "com.hotelaccounting.app",
+    "productName": "Hotel Accounting",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron.js",
+      "server/dist/**/*",
+      "server/node_modules/**/*",
+      "server/package.json",
+      "server/.env",
+      "client/dist/**/*"
+    ],
+    "asarUnpack": [
+      "server/node_modules/.prisma/**/*",
+      "server/node_modules/@prisma/client/**/*",
+      "client/dist/**/*"
+    ],
+    "win": {
+      "target": "nsis"
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Phil629/hotel-accounting.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Phil629/hotel-accounting/issues"
+  },
+  "homepage": "https://github.com/Phil629/hotel-accounting#readme",
+  "description": "",
+  "devDependencies": {
+    "cross-env": "^10.1.0",
+    "electron": "^42.5.0",
+    "electron-builder": "^26.15.3",
+    "wait-on": "^9.0.10"
+  }
+}

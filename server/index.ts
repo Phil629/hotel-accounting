@@ -270,7 +270,7 @@ app.get('/api/invoices', async (req, res) => {
 
 // Delete all invoices (and their matches + imported files) for a given month.
 // Query param: month=YYYY-MM
-app.delete('/api/invoices/by-month', async (req, res) => {
+app.delete('/api/invoices/by-month', requireAdminKey, async (req, res) => {
     const { month } = req.query;
     if (!month || typeof month !== 'string') {
         res.status(400).json({ error: 'month query param required (YYYY-MM)' });
@@ -287,10 +287,11 @@ app.delete('/api/invoices/by-month', async (req, res) => {
         });
         const ids = invoicesToDelete.map(i => i.id);
 
-        // Respect FK constraints: matches first, then invoices
-        await prisma.reconciliationMatch.deleteMany({ where: { invoiceId: { in: ids } } });
-        await prisma.invoice.deleteMany({ where: { id: { in: ids } } });
-        await prisma.importedFile.deleteMany({ where: { dateRangeStart: { gte: start, lt: end } } });
+        await prisma.$transaction([
+            prisma.reconciliationMatch.deleteMany({ where: { invoiceId: { in: ids } } }),
+            prisma.invoice.deleteMany({ where: { id: { in: ids } } }),
+            prisma.importedFile.deleteMany({ where: { dateRangeStart: { gte: start, lt: end } } })
+        ]);
 
         res.json({ success: true, deleted: ids.length });
     } catch (error) {
@@ -301,8 +302,14 @@ app.delete('/api/invoices/by-month', async (req, res) => {
 
 // Manually verify / un-verify an invoice
 app.post('/api/invoices/:id/verify', async (req, res) => {
-    const invoiceId = parseInt(req.params.id);
+    const invoiceId = parseInt(req.params.id, 10);
     const { status } = req.body;
+    
+    if (typeof status !== 'boolean') {
+        res.status(400).json({ error: 'status must be a boolean' });
+        return;
+    }
+
     try {
         if (!status) {
             await prisma.reconciliationMatch.deleteMany({ where: { invoiceId } });
@@ -356,7 +363,7 @@ app.post('/api/invoices/:id/dunning', async (req, res) => {
 // For a full database dump use pg_dump or a direct DB tool.
 const BACKUP_ROW_CAP = 10_000;
 
-app.get('/api/backup', async (_req, res) => {
+app.get('/api/backup', requireAdminKey, async (_req, res) => {
     try {
         const [invoices, importedFiles, bookingPayments, cardPayments, bankTransactions, matches] =
             await Promise.all([
