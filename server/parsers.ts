@@ -69,7 +69,7 @@ function detectEncoding(buf: Buffer): string {
  * awaiting a DB flush inside the loop pauses the read automatically.
  */
 function buildCsvStream(filePath: string, encoding: string, delimiter: string): AsyncIterable<string[]> {
-    const parser = parse({ delimiter, from_line: 1, relax_quotes: true });
+    const parser = parse({ delimiter, from_line: 1, relax_quotes: true, relax_column_count: true });
     fs.createReadStream(filePath)
         .pipe(iconv.decodeStream(encoding))
         .pipe(parser);
