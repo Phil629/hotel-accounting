@@ -40,6 +40,10 @@ interface Invoice {
     dunningStatus?: string;
     dunningMethod?: string;
     dunningDate?: string;
+    tax7Amount?: number;
+    tax19Amount?: number;
+    cityTaxAmount?: number;
+    netAmount?: number;
 }
 
 
@@ -902,7 +906,14 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>{inv.recipient}</td>
             <td>{getPaymentTypes(inv)}</td>
             <td>
-                {Number(inv.amount).toFixed(2)} €
+                <div style={{ fontWeight: 'bold' }}>{Number(inv.amount).toFixed(2)} €</div>
+                {(inv.tax7Amount || inv.tax19Amount || inv.cityTaxAmount) && (
+                    <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
+                        {inv.tax7Amount ? <div>Zimmer: {Number(inv.tax7Amount).toFixed(2)} €</div> : null}
+                        {inv.tax19Amount ? <div>F&amp;B: {Number(inv.tax19Amount).toFixed(2)} €</div> : null}
+                        {inv.cityTaxAmount ? <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div> : null}
+                    </div>
+                )}
                 {inv.status === 'PARTIAL' && (
                     <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: '2px' }}>
                         Teilzahlung ({Number(inv.amountPaid).toFixed(2)} €)

@@ -324,16 +324,19 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
     const stream = buildCsvStream(filePath, encoding, delimiter);
 
     let headerMapped = false;
-    let colMap = { date: -1, number: -1, recipient: -1, amount: -1, type: -1 };
+    let colMap = { date: -1, number: -1, recipient: -1, amount: -1, type: -1, mwst: -1, ba: -1, netto: -1 };
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
-    let batch: Prisma.InvoiceCreateManyInput[] = [];
+    
+    // Wir gruppieren die Rechnungszeilen anhand der Rechnungsnummer
+    const invoicesMap = new Map<string, any>();
 
     async function flushBatch() {
-        if (batch.length === 0) return;
+        if (invoicesMap.size === 0) return;
+        const batch = Array.from(invoicesMap.values());
         await prisma.invoice.createMany({ data: batch, skipDuplicates: true });
-        batch = [];
+        invoicesMap.clear();
     }
 
     for await (const row of stream) {
@@ -345,6 +348,9 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                 recipient: h.findIndex(c => c === 'rechnungsempfänger' || c === 'rechnungsempfaenger'),
                 amount:    h.findIndex(c => c === 'brutto betrag'),
                 type:      h.findIndex(c => c === 'zahlungsart'),
+                mwst:      h.findIndex(c => c === 'mwst.'),
+                ba:        h.findIndex(c => c === 'ba betrag'),
+                netto:     h.findIndex(c => c === 'netto betrag'),
             };
             headerMapped = true;
             continue;
@@ -356,22 +362,48 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
             const recipient = colMap.recipient > -1 ? row[colMap.recipient]?.trim() ?? '' : '';
             const typeStr   = colMap.type      > -1 ? row[colMap.type]?.trim() ?? ''      : '';
             const amount    = colMap.amount    > -1 ? parseAmount(row[colMap.amount])     : 0;
+            const mwst      = colMap.mwst      > -1 ? parseFloat(row[colMap.mwst].replace(',', '.')) : 0;
+            const ba        = colMap.ba        > -1 ? parseAmount(row[colMap.ba])         : 0;
+            const netto     = colMap.netto     > -1 ? parseAmount(row[colMap.netto])      : 0;
 
-            if (!date || !number || amount === 0) continue;
+            if (!date || !number) continue;
 
-            batch.push({
-                invoiceDate:    date,
-                paymentType:    typeStr,
-                invoiceNumber:  number,
-                recipient,
-                amount,
-                amountPaid:     0,
-                status:         'OPEN'
-            });
-            count++;
+            const existing = invoicesMap.get(number);
+            
+            const is7Percent = Math.abs(mwst - 7) < 0.1;
+            const is19Percent = Math.abs(mwst - 19) < 0.1;
+
+            if (existing) {
+                existing.amount += amount;
+                existing.cityTaxAmount = (existing.cityTaxAmount || 0) + ba;
+                existing.netAmount = (existing.netAmount || 0) + netto;
+                if (is7Percent) existing.tax7Amount = (existing.tax7Amount || 0) + amount;
+                if (is19Percent) existing.tax19Amount = (existing.tax19Amount || 0) + amount;
+                
+                // Falls paymentType noch leer ist, Ǭbernehmen (optional, da Rechnungsbericht oft gesplittet ist)
+                if (!existing.paymentType && typeStr) {
+                    existing.paymentType = typeStr;
+                }
+            } else {
+                invoicesMap.set(number, {
+                    invoiceDate:    date,
+                    paymentType:    typeStr,
+                    invoiceNumber:  number,
+                    recipient,
+                    amount:         amount,
+                    cityTaxAmount:  ba,
+                    netAmount:      netto,
+                    tax7Amount:     is7Percent ? amount : 0,
+                    tax19Amount:    is19Percent ? amount : 0,
+                    amountPaid:     0,
+                    status:         'OPEN'
+                });
+                count++;
+            }
+            
             [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
 
-            if (batch.length >= BATCH_SIZE) await flushBatch();
+            if (invoicesMap.size >= BATCH_SIZE) await flushBatch();
         } catch (e) {
             console.error('Rechnungsbericht row error', row, e);
         }

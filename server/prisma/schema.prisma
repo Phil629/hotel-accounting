@@ -18,6 +18,10 @@ model Invoice {
   invoiceNumber     String   @unique // e.g., "Rechnung 17841 / 2025"
   recipient         String
   amount            Decimal  @db.Decimal(12, 2)
+  tax7Amount        Decimal? @db.Decimal(12, 2)
+  tax19Amount       Decimal? @db.Decimal(12, 2)
+  cityTaxAmount     Decimal? @db.Decimal(12, 2)
+  netAmount         Decimal? @db.Decimal(12, 2)
   amountPaid        Decimal  @default(0.00) @db.Decimal(12, 2)
   status            String   @default("OPEN") // "OPEN", "PARTIAL", "PAID"
 
