@@ -419,12 +419,7 @@ export const Dashboard: React.FC = () => {
         return details.trim();
     };
 
-    const getPaymentTypes = (inv: Invoice) => {
-        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
-            return inv.pmsPayments.map(p => `${p.paymentType} (${Number(p.amount).toFixed(2)} €)`).join(' + ');
-        }
-        return inv.paymentType;
-    };
+
 
     const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
         if (sortField !== field) return <span style={{ opacity: 0.3 }}>↕</span>;
@@ -493,7 +488,7 @@ export const Dashboard: React.FC = () => {
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
-                    <button className="btn" style={{ marginLeft: 'auto', backgroundColor: '#4b5563' }}
+                    <button className="btn"
                         onClick={async () => {
                             const adminKey = window.prompt('Bitte Admin-Passwort eingeben, um das Backup herunterzuladen:');
                             if (!adminKey) return;
@@ -822,6 +817,13 @@ export const Dashboard: React.FC = () => {
     );
 };
 
+const getPaymentTypes = (inv: Invoice) => {
+        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
+            return inv.pmsPayments.map(p => `${p.paymentType} (${Number(p.amount).toFixed(2)} €)`).join(' + ');
+        }
+        return inv.paymentType;
+    };
+
 interface InvoiceRowProps {
     inv: Invoice;
     onToggleManual: (id: number, currentStatus: boolean) => void;
@@ -972,3 +974,5 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
         </tr>
     );
 });
+
+
