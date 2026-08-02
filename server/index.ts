@@ -255,6 +255,8 @@ app.get('/api/invoices', async (req, res) => {
                         bankTransaction: true,
                     },
                 },
+                pmsPayments: true,
+                roomReservations: true,
             },
             orderBy: { invoiceDate: 'desc' },
         });

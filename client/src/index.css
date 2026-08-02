@@ -121,6 +121,11 @@ td {
   color: #854d0e;
 }
 
+.status-partial {
+  background-color: #ffedd5;
+  color: #c2410c;
+}
+
 .status-unmatched {
   background-color: #fee2e2;
   color: #991b1b;

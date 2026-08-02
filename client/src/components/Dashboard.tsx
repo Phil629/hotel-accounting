@@ -3,20 +3,54 @@ import { api } from '../api';
 import { Toast } from './Toast';
 import type { ToastProps } from './Toast';
 
+interface RoomReservation {
+    id: number;
+    guestName: string;
+    checkIn: string;
+    checkOut: string;
+    days: number;
+    pax: number;
+    totalPrice: number;
+    isAirbnb: boolean;
+}
+
+interface PmsPayment {
+    id: number;
+    paymentType: string;
+    amount: number;
+    paymentDate: string;
+}
+
 interface Invoice {
     id: number;
     invoiceDate: string;
     invoiceNumber: string;
     recipient: string;
     amount: number;
+    amountPaid: number;
+    status: 'OPEN' | 'PARTIAL' | 'PAID';
     paymentType: string;
     isReconciled: boolean;
     manualStatus: boolean;
     comment: string | null;
     matches?: any[];
+    pmsPayments?: PmsPayment[];
+    roomReservations?: RoomReservation[];
     dunningStatus?: string;
     dunningMethod?: string;
     dunningDate?: string;
+}
+
+function calculateCitytax(res: RoomReservation): number {
+    if (res.pax === 0 || res.days === 0) return 0;
+    const pricePerPersonPerNight = Number(res.totalPrice) / res.pax / res.days;
+    let tax = 0;
+    if (pricePerPersonPerNight >= 20 && pricePerPersonPerNight < 50) tax = 2;
+    else if (pricePerPersonPerNight >= 50 && pricePerPersonPerNight < 100) tax = 3;
+    else if (pricePerPersonPerNight >= 100 && pricePerPersonPerNight < 200) tax = 4;
+    else if (pricePerPersonPerNight >= 200) tax = 5;
+    
+    return tax * res.pax * res.days;
 }
 
 type SortField = 'date' | 'number' | 'recipient' | 'type' | 'amount' | 'status';
@@ -275,6 +309,28 @@ export const Dashboard: React.FC = () => {
         }
         return result;
     }, [groupedInvoices]);
+
+    const citytaxStats = useMemo(() => {
+        let generated = 0;
+        let paid = 0;
+        
+        if (selectedMonth && groupedInvoices[selectedMonth]) {
+            for (const inv of groupedInvoices[selectedMonth]) {
+                let invTax = 0;
+                if (inv.roomReservations) {
+                    for (const res of inv.roomReservations) {
+                        invTax += calculateCitytax(res);
+                    }
+                }
+                generated += invTax;
+                // If invoice is fully paid, or reconciled, or manually verified, consider citytax paid
+                if (inv.status === 'PAID' || inv.isReconciled || inv.manualStatus) {
+                    paid += invTax;
+                }
+            }
+        }
+        return { generated, paid };
+    }, [selectedMonth, groupedInvoices]);
 
     // Delete selected months
     const handleDeleteMonths = async () => {
@@ -552,19 +608,36 @@ export const Dashboard: React.FC = () => {
                             <>
                                 {/* Monthly Summary Bar */}
                                 {monthStatus[selectedMonth] && (
-                                    <div style={{
-                                        display: 'flex', gap: '1.5rem', marginBottom: '1rem',
-                                        padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
-                                        backgroundColor: monthStatus[selectedMonth].allDone ? '#d1fae5' : '#fef9c3',
-                                        border: `1px solid ${monthStatus[selectedMonth].allDone ? '#6ee7b7' : '#fde047'}`,
-                                        fontSize: '0.9rem'
-                                    }}>
-                                        <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
-                                        <span style={{ color: '#065f46' }}>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen — Summe: <strong>{monthStatus[selectedMonth].closedSum.toFixed(2)} €</strong></span>
-                                        {monthStatus[selectedMonth].open > 0 && (
-                                            <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
-                                        )}
-                                        {monthStatus[selectedMonth].allDone && <span>🎉 Monat vollständig abgeglichen!</span>}
+                                    <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '1rem' }}>
+                                        <div style={{
+                                            flex: 1, display: 'flex', gap: '1.5rem',
+                                            padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
+                                            backgroundColor: monthStatus[selectedMonth].allDone ? '#d1fae5' : '#fef9c3',
+                                            border: `1px solid ${monthStatus[selectedMonth].allDone ? '#6ee7b7' : '#fde047'}`,
+                                            fontSize: '0.9rem'
+                                        }}>
+                                            <span>📄 <strong>{monthStatus[selectedMonth].total}</strong> Rechnungen gesamt</span>
+                                            <span style={{ color: '#065f46' }}>✅ <strong>{monthStatus[selectedMonth].total - monthStatus[selectedMonth].open}</strong> abgeglichen — Summe: <strong>{monthStatus[selectedMonth].closedSum.toFixed(2)} €</strong></span>
+                                            {monthStatus[selectedMonth].open > 0 && (
+                                                <span style={{ color: '#b45309' }}>⚠️ <strong>{monthStatus[selectedMonth].open}</strong> offen — Summe: <strong>{monthStatus[selectedMonth].openSum.toFixed(2)} €</strong></span>
+                                            )}
+                                            {monthStatus[selectedMonth].allDone && <span>🎉 Monat vollständig abgeglichen!</span>}
+                                        </div>
+
+                                        <div style={{
+                                            display: 'flex', gap: '1.5rem',
+                                            padding: '0.6rem 1rem', borderRadius: 'var(--radius)',
+                                            backgroundColor: '#eff6ff',
+                                            border: `1px solid #bfdbfe`,
+                                            fontSize: '0.9rem'
+                                        }}>
+                                            <span>🏛️ <strong>Citytax Dashboard</strong></span>
+                                            <span style={{ color: '#1e40af' }}>Generiert: <strong>{citytaxStats.generated.toFixed(2)} €</strong></span>
+                                            <span style={{ color: '#047857' }}>Bezahlt: <strong>{citytaxStats.paid.toFixed(2)} €</strong></span>
+                                            {citytaxStats.generated > citytaxStats.paid && (
+                                                <span style={{ color: '#b45309' }}>Offen: <strong>{(citytaxStats.generated - citytaxStats.paid).toFixed(2)} €</strong></span>
+                                            )}
+                                        </div>
                                     </div>
                                 )}
                                 <div className="card table-container">
@@ -756,11 +829,18 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>{inv.invoiceNumber}</td>
             <td>{inv.recipient}</td>
             <td>{inv.paymentType}</td>
-            <td>{Number(inv.amount).toFixed(2)} €</td>
+            <td>
+                {Number(inv.amount).toFixed(2)} €
+                {inv.status === 'PARTIAL' && (
+                    <div style={{ fontSize: '0.75rem', color: '#b45309', marginTop: '2px' }}>
+                        Teilzahlung ({Number(inv.amountPaid).toFixed(2)} €)
+                    </div>
+                )}
+            </td>
             <td>
                 <div className="tooltip-container">
-                    <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : hasMismatchSuggestion ? 'status-suggested' : 'status-open'}`}>
-                        {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : hasMismatchSuggestion ? 'Zahlungsart?' : 'Open'}
+                    <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : inv.status === 'PARTIAL' ? 'status-partial' : hasMismatchSuggestion ? 'status-suggested' : 'status-open'}`}>
+                        {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : inv.status === 'PARTIAL' ? 'Teilweise' : hasMismatchSuggestion ? 'Zahlungsart?' : 'Open'}
                     </span>
                     {(optimisticIsReconciled || optimisticManualStatus || hasMismatchSuggestion) && (
                         <div className="tooltip">
