@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
-import { api } from '../api';
+import { api, API_URL } from '../api';
 import { Toast } from './Toast';
 import type { ToastProps } from './Toast';
 
@@ -133,8 +133,7 @@ export const Dashboard: React.FC = () => {
         setProgress(0);
         setProgressText('Verbinde mit Server...');
 
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
-        const eventSource = new EventSource(`${baseUrl}/api/reconcile/stream`);
+        const eventSource = new EventSource(`${API_URL}/reconcile/stream`);
 
         eventSource.onmessage = (event) => {
             try {
