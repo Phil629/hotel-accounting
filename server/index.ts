@@ -205,10 +205,28 @@ app.get('/api/import-status', async (_req, res) => {
 });
 
 // Run reconciliation
+let sseClients: any[] = [];
+
+app.get('/api/reconcile/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    sseClients.push(res);
+
+    req.on('close', () => {
+        sseClients = sseClients.filter(c => c !== res);
+    });
+});
+
 app.post('/api/reconcile', async (_req, res) => {
     try {
-        const result = await runReconciliation();
-        res.json({ message: 'Reconciliation complete', ...result });
+        const result = await runReconciliation((progress, message) => {
+            const data = JSON.stringify({ progress, message });
+            sseClients.forEach(c => c.write(`data: ${data}\n\n`));
+        });
+        res.json({ message: 'Reconciliation complete', matches: result });
     } catch (error) {
         console.error('Reconciliation error:', error);
         res.status(500).json({ error: 'Reconciliation failed' });

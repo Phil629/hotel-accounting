@@ -68,6 +68,8 @@ export const Dashboard: React.FC = () => {
     const [invoices, setInvoices] = useState<Invoice[]>([]);
     const [loading, setLoading] = useState(false);
     const [reconciling, setReconciling] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [progressText, setProgressText] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [sortField, setSortField] = useState<SortField>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
@@ -128,6 +130,20 @@ export const Dashboard: React.FC = () => {
 
     const handleReconcile = async () => {
         setReconciling(true);
+        setProgress(0);
+        setProgressText('Verbinde mit Server...');
+
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:3001';
+        const eventSource = new EventSource(`${baseUrl}/api/reconcile/stream`);
+
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                setProgress(data.progress);
+                setProgressText(data.message);
+            } catch (err) {}
+        };
+
         try {
             const res = await api.reconcile();
             showToast(`Abgleich abgeschlossen! ${res.matches} Rechnungen zugeordnet.`, 'success');
@@ -135,6 +151,7 @@ export const Dashboard: React.FC = () => {
         } catch (e) {
             showToast('Abgleich fehlgeschlagen', 'error');
         } finally {
+            eventSource.close();
             setReconciling(false);
         }
     };
@@ -695,22 +712,24 @@ export const Dashboard: React.FC = () => {
             {reconciling && (
                 <div style={{
                     position: 'fixed', inset: 0,
-                    backgroundColor: 'rgba(0,0,0,0.5)',
+                    backgroundColor: 'rgba(0,0,0,0.7)',
                     zIndex: 9999,
                     display: 'flex', flexDirection: 'column',
                     alignItems: 'center', justifyContent: 'center',
-                    gap: '1rem', color: 'white',
-                    fontSize: '1.2rem', fontWeight: 'bold'
+                    gap: '1.5rem', color: 'white'
                 }}>
-                    <div style={{
-                        width: '48px', height: '48px',
-                        border: '5px solid rgba(255,255,255,0.3)',
-                        borderTopColor: 'white',
-                        borderRadius: '50%',
-                        animation: 'spin 0.8s linear infinite'
-                    }} />
-                    <div>Abgleich läuft...</div>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.8, fontWeight: 'normal' }}>Bitte warten und nicht wegklicken.</div>
+                    <h2 style={{ margin: 0, fontSize: '1.8rem' }}>Rechnungsabgleich läuft</h2>
+                    <div style={{ width: '400px', backgroundColor: 'rgba(255,255,255,0.2)', borderRadius: '8px', overflow: 'hidden' }}>
+                        <div style={{
+                            width: `${progress}%`,
+                            height: '12px',
+                            backgroundColor: '#10b981',
+                            transition: 'width 0.3s ease'
+                        }} />
+                    </div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: '500' }}>
+                        {progress}% – {progressText}
+                    </div>
                 </div>
             )}
 

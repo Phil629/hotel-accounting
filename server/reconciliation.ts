@@ -68,9 +68,13 @@ function cleanName(name: string | null | undefined): string {
 
 // ─── Main Entry Point ─────────────────────────────────────────────────────────
 
-export async function runReconciliation() {
-    console.log('Starting reconciliation...');
+export async function runReconciliation(onProgress?: (progress: number, message: string) => void) {
+    const notify = (p: number, m: string) => {
+        console.log(`[${p}%] ${m}`);
+        if (onProgress) onProgress(p, m);
+    };
 
+    notify(5, 'Starte Abgleich: Lese Rechnungen und Zimmer... (Schritt 1/5)');
     const nineMonthsAgo = new Date();
     nineMonthsAgo.setMonth(nineMonthsAgo.getMonth() - 9);
 
@@ -96,6 +100,7 @@ export async function runReconciliation() {
     }
 
     // 2. Link PmsPayments to Invoices
+    notify(20, 'Verknüpfe Zahlungsberichte mit Rechnungen... (Schritt 2/5)');
     const unlinkedPms = await prisma.pmsPayment.findMany({ where: { invoiceId: null } });
     for (const pms of unlinkedPms) {
         let match = null;
@@ -122,6 +127,7 @@ export async function runReconciliation() {
     }
 
     // 3. Update Invoice amounts and statuses
+    notify(35, 'Aktualisiere Rechnungsstatus (Bezahlt/Offen)... (Schritt 3/5)');
     const invoicesWithPayments = await prisma.invoice.findMany({
         include: { pmsPayments: true }
     });
@@ -142,6 +148,7 @@ export async function runReconciliation() {
     }
 
     // 4. Match PmsPayments against Bank/Card/Booking
+    notify(50, 'Lade externe Bank- und Kreditkartendaten... (Schritt 4/5)');
     const [pmsPaymentsToMatch, bookingPayments, cardPayments, bankTransactions] = await Promise.all([
         prisma.pmsPayment.findMany({
             where: { matches: { none: {} }, invoiceId: { not: null } },
@@ -177,6 +184,11 @@ export async function runReconciliation() {
     const matchesToCreate: MatchRecord[] = [];
 
     for (let pass = 1; pass <= 4; pass++) {
+        if (pass === 1) notify(60, 'Suche eindeutige Matches (100% Namensübereinstimmung)...');
+        if (pass === 2) notify(70, 'Suche starke Matches (Ohne Betragsabweichung)...');
+        if (pass === 3) notify(80, 'Suche ungefähre Matches (Erweiterter Namensabgleich)...');
+        if (pass === 4) notify(90, 'Suche Mismatch-Vorschläge...');
+
         for (const pms of pmsPaymentsToMatch) {
             if (matchedPmsIds.has(pms.id)) continue;
             
@@ -209,8 +221,11 @@ export async function runReconciliation() {
         }
     }
 
-    if (matchesToCreate.length > 0) {
-        await prisma.reconciliationMatch.createMany({ data: matchesToCreate });
+    notify(95, `Speichere ${matchesToCreate.length} Matches in der Datenbank... (Schritt 5/5)`);
+
+    // Group into batches of 500
+    for (let i = 0; i < matchesToCreate.length; i += 500) {
+        await prisma.reconciliationMatch.createMany({ data: matchesToCreate.slice(i, i + 500) });
     }
 
     const allInvoicesToCheck = await prisma.invoice.findMany({
