@@ -159,7 +159,7 @@ export const Guide: React.FC = () => {
                                     <p className="mb-2">Navigieren Sie zu <strong className="text-green-600">Berichte</strong> → <strong className="text-green-600">Eigentümernachweis / Zimmerübersicht</strong>.</p>
                                     <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
                                         <li>Start- und Enddatum (wie bei Schritt 1 & 2) einstellen</li>
-                                        <li>Haken setzen bei: <strong>Mit Kontakt Daten</strong></li>
+                                        <li>Haken ENTFERNEN bei: <strong>Mit Kontakt Daten</strong></li>
                                         <li className="text-red-600 font-semibold">Haken ENTFERNEN bei: Mit inkludierten Ratenprodukten</li>
                                         <li>Bei Zimmer auf <strong>Alle auswählen</strong> klicken</li>
                                         <li>Haken setzen bei: <strong>CSV (Excel) Export</strong></li>
