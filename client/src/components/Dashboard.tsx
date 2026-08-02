@@ -372,23 +372,55 @@ export const Dashboard: React.FC = () => {
     const sortedFilteredInvoices = useMemo(() => sortInvoices(filteredInvoices), [filteredInvoices, sortInvoices]);
 
     const getMatchDetails = (inv: Invoice): string => {
-        if (!inv.matches || inv.matches.length === 0) return '';
+        let details = '';
         
-        return inv.matches.map(match => {
-            const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
-            const prefix = isSuggestion ? 'Vorschlag: ' : '';
-    
-            if (match.bookingPayment) {
-                return `${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)}€ (Ref: ${match.bookingPayment.referenceNumber})`;
-            }
-            if (match.cardPayment) {
-                return `${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)}€ (${new Date(match.cardPayment.transactionDate).toLocaleDateString()})`;
-            }
-            if (match.bankTransaction) {
-                return `${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)}€ (${match.bankTransaction.senderReceiver})`;
-            }
-            return "Matched";
-        }).join(' | ');
+        let totalCityTax = 0;
+        if (inv.roomReservations) {
+            totalCityTax = inv.roomReservations.reduce((sum, r) => sum + (Number(r.cityTax) || 0), 0);
+        }
+        
+        details += `Rechnungsbetrag: ${Number(inv.amount).toFixed(2)} €\n`;
+        if (totalCityTax > 0) {
+            details += `Davon Citytax: ${totalCityTax.toFixed(2)} €\n`;
+        }
+        
+        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
+            details += `\nZahlung (Hotelsoftware):\n`;
+            inv.pmsPayments.forEach(p => {
+                details += `- ${p.paymentType}: ${Number(p.amount).toFixed(2)} €\n`;
+            });
+        }
+        
+        if (inv.matches && inv.matches.length > 0) {
+            details += `\nBank-Abgleich:\n`;
+            inv.matches.forEach(match => {
+                const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
+                const prefix = isSuggestion ? 'Vorschlag: ' : '';
+        
+                if (match.bookingPayment) {
+                    details += `- ${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)} €\n`;
+                }
+                if (match.cardPayment) {
+                    details += `- ${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)} €\n`;
+                }
+                if (match.bankTransaction) {
+                    details += `- ${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)} €\n`;
+                }
+            });
+        }
+
+        if (!inv.pmsPayments?.length && (!inv.matches || inv.matches.length === 0)) {
+            details += `\n(Keine Zahlungsdetails gefunden)`;
+        }
+
+        return details.trim();
+    };
+
+    const getPaymentTypes = (inv: Invoice) => {
+        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
+            return inv.pmsPayments.map(p => `${p.paymentType} (${Number(p.amount).toFixed(2)} €)`).join(' + ');
+        }
+        return inv.paymentType;
     };
 
     const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
@@ -862,7 +894,7 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>{new Date(inv.invoiceDate).toLocaleDateString('de-DE')}</td>
             <td>{inv.invoiceNumber}</td>
             <td>{inv.recipient}</td>
-            <td>{inv.paymentType}</td>
+            <td>{getPaymentTypes(inv)}</td>
             <td>
                 {Number(inv.amount).toFixed(2)} €
                 {inv.status === 'PARTIAL' && (
@@ -876,11 +908,9 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                     <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : inv.status === 'PARTIAL' ? 'status-partial' : hasMismatchSuggestion ? 'status-suggested' : 'status-open'}`}>
                         {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : inv.status === 'PARTIAL' ? 'Teilweise' : hasMismatchSuggestion ? 'Zahlungsart?' : 'Open'}
                     </span>
-                    {(optimisticIsReconciled || optimisticManualStatus || hasMismatchSuggestion) && (
-                        <div className="tooltip">
-                            {inv.matches && inv.matches.length > 0 ? getMatchDetails(inv) : 'Manuell zugeordnet'}
-                        </div>
-                    )}
+                    <div className="tooltip">
+                        {getMatchDetails(inv)}
+                    </div>
                 </div>
             </td>
             <td>

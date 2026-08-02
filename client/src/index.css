@@ -153,16 +153,17 @@ td {
 
 .tooltip {
   visibility: hidden;
-  width: 250px;
+  width: 320px;
   background-color: #333;
   color: #fff;
-  text-align: center;
+  text-align: left;
   border-radius: 6px;
-  padding: 5px;
+  padding: 10px;
   position: absolute;
-  z-index: 1;
+  z-index: 100;
   bottom: 125%;
-  /* Position above */
+  white-space: pre-wrap;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
   left: 50%;
   margin-left: -125px;
   opacity: 0;
