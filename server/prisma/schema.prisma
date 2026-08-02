@@ -18,6 +18,8 @@ model Invoice {
   invoiceNumber     String   @unique // e.g., "Rechnung 17841 / 2025"
   recipient         String
   amount            Decimal  @db.Decimal(12, 2)
+  amountPaid        Decimal  @default(0.00) @db.Decimal(12, 2)
+  status            String   @default("OPEN") // "OPEN", "PARTIAL", "PAID"
 
   // Reconciliation Status
   isReconciled      Boolean  @default(false)
@@ -32,6 +34,8 @@ model Invoice {
 
   // Relations
   matches           ReconciliationMatch[]
+  pmsPayments       PmsPayment[]
+  roomReservations  RoomReservation[]
 
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
@@ -116,6 +120,9 @@ model ReconciliationMatch {
   matchType         String   // "AUTOMATIC", "MANUAL_REF", "MANUAL"
   confidence        Float?   // 1.0 for exact match
 
+  pmsPaymentId      Int?
+  pmsPayment        PmsPayment? @relation(fields: [pmsPaymentId], references: [id])
+
   createdAt         DateTime @default(now())
 }
 
@@ -129,4 +136,44 @@ model ImportedFile {
   dateRangeStart    DateTime?
   dateRangeEnd      DateTime?
   logs              String?  // JSON string of debug logs
+}
+
+model PmsPayment {
+  id                Int      @id @default(autoincrement())
+  paymentDate       DateTime
+  paymentType       String
+  invoiceNumber     String?
+  recipient         String?
+  amount            Decimal  @db.Decimal(12, 2)
+  
+  invoiceId         Int?
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id])
+  matches           ReconciliationMatch[]
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([paymentDate])
+}
+
+model RoomReservation {
+  id                Int      @id @default(autoincrement())
+  category          String
+  roomName          String
+  checkIn           DateTime
+  checkOut          DateTime
+  nights            Int
+  guestName         String
+  pax               Int
+  price             Decimal  @db.Decimal(12, 2) // Logis ohne Frühstück
+  cityTax           Decimal? @db.Decimal(12, 2)
+  isAirbnb          Boolean  @default(false)
+  
+  invoiceId         Int?
+  invoice           Invoice? @relation(fields: [invoiceId], references: [id])
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@index([checkIn])
 }
