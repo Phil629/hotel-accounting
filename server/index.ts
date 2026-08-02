@@ -1,8 +1,9 @@
-import 'dotenv/config';
+import * as dotenv from 'dotenv';
+import path from 'path';
+dotenv.config({ path: path.join(__dirname, '../.env') });
 import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
-import path from 'path';
 import fs from 'fs';
 import prisma from './db';
 import { processFile } from './parsers';
@@ -15,7 +16,7 @@ const port = process.env.PORT || 3010;
 // Allowed origins are configured via ALLOWED_ORIGINS env var (comma-separated).
 // Default covers the Vite dev server and Netlify production.
 // Example: ALLOWED_ORIGINS=https://hotel.example.com
-const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://rechnungsabgleich.netlify.app,http://localhost:5173')
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS ?? 'https://rechnungsabgleich.netlify.app,http://localhost:5173,http://localhost:5180,http://localhost:3010,null')
     .split(',')
     .map(o => o.trim())
     .filter(Boolean);
@@ -36,8 +37,10 @@ app.use(express.json());
 // ─── File Upload (#15) ────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        const uploadDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+        // Use Electron's user data path if available, otherwise local uploads folder
+        const baseDir = process.env.USER_DATA_PATH || __dirname;
+        const uploadDir = path.join(baseDir, 'uploads');
+        if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
         cb(null, uploadDir);
     },
     filename: (req, file, cb) => {
@@ -428,6 +431,20 @@ app.use((
     console.error('Unhandled error:', err);
     res.status(500).json({ error: 'Internal server error' });
 });
+
+// ─── Serve Frontend (Electron / Production) ──────────────────────────────────
+const isPackaged = __dirname.includes('app.asar');
+const clientDistPath = isPackaged
+    ? path.join(__dirname.replace('app.asar', 'app.asar.unpacked'), '../../client/dist')
+    : path.join(__dirname, '../../client/dist');
+
+if (fs.existsSync(clientDistPath)) {
+    app.use(express.static(clientDistPath));
+    app.use((req, res) => {
+        res.sendFile(path.join(clientDistPath, 'index.html'));
+    });
+}
+
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 app.listen(port, () => {
