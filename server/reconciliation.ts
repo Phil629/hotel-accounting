@@ -141,6 +141,10 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (paid >= Number(inv.amount) - 0.05) status = 'PAID';
         else if (paid > 0) status = 'PARTIAL';
         
+        if (Number(inv.amountPaid) === paid && inv.status === status) {
+            continue;
+        }
+        
         await prisma.invoice.update({
             where: { id: inv.id },
             data: { amountPaid: paid, status }
