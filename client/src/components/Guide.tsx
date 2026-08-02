@@ -114,22 +114,59 @@ export const Guide: React.FC = () => {
                 {/* Ibelsa Content */}
                 {activeTab === 'ibelsa' && (
                     <div className="divide-y divide-gray-100">
+                        <div className="p-8 bg-green-50/50">
+                            <h2 className="text-2xl font-bold text-gray-900 mb-2">Der monatliche Ibelsa-Export</h2>
+                            <p className="text-gray-600">
+                                Exportieren Sie am Monatsende zwingend alle <strong>drei Berichte</strong> als <strong>CSV (Excel) Export</strong> für den <strong>exakt gleichen Zeitraum</strong> (z.B. 01.07. bis 31.07.).
+                            </p>
+                        </div>
                         <Step
                             number={1}
                             title="Zahlungsbericht exportieren"
                             description={
                                 <div>
                                     <p className="mb-2">Navigieren Sie zu <strong className="text-green-600">Berichte</strong> → <strong className="text-green-600">Zahlungsbericht</strong>.</p>
-                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1">
-                                        <li>Zeitraum: Gewünschten Monat wählen</li>
-                                        <li>Format: "CSV (Excel) Export" aktivieren</li>
+                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
+                                        <li>Start- und Enddatum des Monats einstellen</li>
+                                        <li>Rechnungstyp: <strong>alle Rechnungen (inkl. Gastro)</strong></li>
+                                        <li>Haken setzen bei: <strong>Zahlungen aller Nutzer anzeigen</strong></li>
+                                        <li>Haken setzen bei: <strong>CSV (Excel) Export</strong></li>
                                     </ul>
-                                    <span className="inline-block mt-3 text-sm text-gray-500 bg-gray-50 px-2 py-1 rounded border border-gray-200">
-                                        💡 Wichtig: Laden Sie diese Datei anschließend im Dashboard hoch.
-                                    </span>
                                 </div>
                             }
-                            imageSrc="/guide/ibelsa_step1_new.png"
+                            imageSrc="/guide/ibelsa_zahlungsbericht.png"
+                        />
+                        <Step
+                            number={2}
+                            title="Rechnungsbericht exportieren"
+                            description={
+                                <div>
+                                    <p className="mb-2">Navigieren Sie zu <strong className="text-green-600">Berichte</strong> → <strong className="text-green-600">Rechnungsbericht</strong>.</p>
+                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
+                                        <li>Sortieren nach: <strong>Rechnungsnummer</strong></li>
+                                        <li>Start- und Enddatum (wie bei Schritt 1) einstellen</li>
+                                        <li>Haken setzen bei: <strong>CSV (Excel) Export</strong></li>
+                                    </ul>
+                                </div>
+                            }
+                            imageSrc="/guide/ibelsa_rechnungsbericht.png"
+                        />
+                        <Step
+                            number={3}
+                            title="Zimmerübersicht (Eigentümernachweis) exportieren"
+                            description={
+                                <div>
+                                    <p className="mb-2">Navigieren Sie zu <strong className="text-green-600">Berichte</strong> → <strong className="text-green-600">Eigentümernachweis / Zimmerübersicht</strong>.</p>
+                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
+                                        <li>Start- und Enddatum (wie bei Schritt 1 & 2) einstellen</li>
+                                        <li>Haken setzen bei: <strong>Mit Kontakt Daten</strong></li>
+                                        <li>Haken setzen bei: <strong>Mit inkludierten Ratenprodukten</strong></li>
+                                        <li>Bei Zimmer auf <strong>Alle auswählen</strong> klicken</li>
+                                        <li>Haken setzen bei: <strong>CSV (Excel) Export</strong></li>
+                                    </ul>
+                                </div>
+                            }
+                            imageSrc="/guide/ibelsa_eigentuemernachweis.png"
                         />
                     </div>
                 )}
