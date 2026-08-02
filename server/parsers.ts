@@ -324,7 +324,7 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
     const stream = buildCsvStream(filePath, encoding, delimiter);
 
     let headerMapped = false;
-    let colMap = { date: -1, number: -1, recipient: -1, amount: -1 };
+    let colMap = { date: -1, number: -1, recipient: -1, amount: -1, type: -1 };
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
@@ -344,22 +344,24 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                 number:    h.findIndex(c => c === 'rechnungsnummer'),
                 recipient: h.findIndex(c => c === 'rechnungsempfänger' || c === 'rechnungsempfaenger'),
                 amount:    h.findIndex(c => c === 'brutto betrag'),
+                type:      h.findIndex(c => c === 'zahlungsart'),
             };
             headerMapped = true;
             continue;
         }
 
         try {
-            const date      = colMap.date      > -1 ? parseDate(row[colMap.date])        : null;
+            const date      = colMap.date      > -1 ? parseDate(row[colMap.date])         : null;
             const number    = colMap.number    > -1 ? row[colMap.number]?.trim()          : '';
             const recipient = colMap.recipient > -1 ? row[colMap.recipient]?.trim() ?? '' : '';
+            const typeStr   = colMap.type      > -1 ? row[colMap.type]?.trim() ?? ''      : '';
             const amount    = colMap.amount    > -1 ? parseAmount(row[colMap.amount])     : 0;
 
             if (!date || !number || amount === 0) continue;
 
             batch.push({
                 invoiceDate:    date,
-                paymentType:    '',
+                paymentType:    typeStr,
                 invoiceNumber:  number,
                 recipient,
                 amount,
