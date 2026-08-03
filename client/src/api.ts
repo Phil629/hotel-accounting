@@ -60,10 +60,9 @@ export const api = {
         return res.json();
     },
 
-    async clearDatabase(adminKey: string) {
+    async clearDatabase() {
         const res = await fetch(`${API_URL}/clear-db`, { 
-            method: 'DELETE',
-            headers: { 'x-admin-key': adminKey }
+            method: 'DELETE'
         });
         return res.json();
     },
@@ -74,11 +73,10 @@ export const api = {
         return res.json();
     },
 
-    async deleteMonth(month: string, adminKey: string) {
+    async deleteMonth(month: string) {
         // month format: YYYY-MM
         const res = await fetch(`${API_URL}/invoices/by-month?month=${month}`, { 
-            method: 'DELETE',
-            headers: { 'x-admin-key': adminKey }
+            method: 'DELETE'
         });
         if (!res.ok) throw new Error('Failed to delete month');
         return res.json();
@@ -90,10 +88,8 @@ export const api = {
         return res.json();
     },
 
-    async downloadBackup(adminKey: string) {
-        const res = await fetch(`${API_URL}/backup`, {
-            headers: { 'x-admin-key': adminKey }
-        });
+    async downloadBackup() {
+        const res = await fetch(`${API_URL}/backup`);
         if (!res.ok) throw new Error('Failed to download backup');
         return res.json();
     }

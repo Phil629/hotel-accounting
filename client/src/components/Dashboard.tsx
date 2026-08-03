@@ -354,14 +354,12 @@ export const Dashboard: React.FC = () => {
     // Delete selected months
     const handleDeleteMonths = async () => {
         if (selectedMonthsToDelete.size === 0) return;
-        const adminKey = window.prompt('Bitte Admin-Passwort eingeben, um den Monat zu löschen:');
-        if (!adminKey) return;
         
         setDeleting(true);
         try {
             for (const month of selectedMonthsToDelete) {
                 const yyyymm = monthNameToYYYYMM(month);
-                await api.deleteMonth(yyyymm, adminKey);
+                await api.deleteMonth(yyyymm);
             }
             showToast(`${selectedMonthsToDelete.size} Monat(e) gelöscht.`, 'success');
             setShowDeleteModal(false);
@@ -494,11 +492,9 @@ export const Dashboard: React.FC = () => {
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <button className="btn"
                         onClick={async () => {
-                            const adminKey = window.prompt('Bitte Admin-Passwort eingeben, um das Backup herunterzuladen:');
-                            if (!adminKey) return;
                             try {
                                 showToast('Backup wird generiert...', 'info');
-                                const data = await api.downloadBackup(adminKey);
+                                const data = await api.downloadBackup();
                                 const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
                                 const url = window.URL.createObjectURL(blob);
                                 const a = document.createElement('a');
