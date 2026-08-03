@@ -71,7 +71,31 @@ function cleanName(name: string | null | undefined): string {
         .replace(/ö/g, 'oe')
         .replace(/ü/g, 'ue')
         .replace(/ß/g, 'ss')
-        .replace(/[^a-z0-9]/g, '');
+        .replace(/[^a-z0-9]/g, ' ') // Replace with space instead of deleting
+        .trim()
+        .replace(/\s+/g, ' ');      // Collapse multiple spaces
+}
+
+function isNameMatch(name1: string | null | undefined, name2: string | null | undefined): boolean {
+    if (!name1 || !name2) return false;
+    
+    // Exact or direct inclusion match
+    if (name1.includes(name2) || name2.includes(name1)) return true;
+    
+    // Word-based match (handles "Last, First" vs "First Last, City")
+    const words1 = name1.split(' ').filter(w => w.length > 2);
+    const words2 = name2.split(' ').filter(w => w.length > 2);
+    
+    if (words1.length === 0 || words2.length === 0) return false;
+    
+    let matches = 0;
+    for (const w1 of words1) {
+        if (words2.includes(w1)) matches++;
+    }
+    
+    // Require at least 2 matching words, or 100% of the shorter name
+    const minRequired = Math.min(words1.length, words2.length, 2);
+    return matches >= minRequired;
 }
 
 // ─── Main Entry Point ─────────────────────────────────────────────────────────
@@ -102,7 +126,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     for (const room of unlinkedRooms) {
         const roomNameClean = cleanName(room.guestName);
         const match = allInvoices.find(inv => {
-            const nameMatch = inv.cleanName.includes(roomNameClean) || roomNameClean.includes(inv.cleanName);
+            const nameMatch = isNameMatch(inv.cleanName, roomNameClean);
             const dateMatch = Math.abs(differenceInDays(room.checkOut, inv.invoiceDate)) <= 3;
             return nameMatch && dateMatch;
         });
@@ -133,7 +157,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (!match && pms.recipient) {
             const pmsNameClean = cleanName(pms.recipient);
             match = allInvoices.find(inv => {
-                const nameMatch = inv.cleanName.includes(pmsNameClean) || pmsNameClean.includes(inv.cleanName);
+                const nameMatch = isNameMatch(inv.cleanName, pmsNameClean);
                 const dateMatch = Math.abs(differenceInDays(pms.paymentDate, inv.invoiceDate)) <= 3;
                 return nameMatch && dateMatch;
             });
@@ -400,11 +424,10 @@ function matchBank(
         const diffDays = Math.abs(differenceInDays(pms.paymentDate, payment.bookingDate));
         if (diffDays > BANK_DATE_TOLERANCE_DAYS) continue;
 
-        const pmsRecipient = pms.recipient ?? pms.invoice?.recipient ?? '';
-        const nameMatch =
-            !!payment.senderReceiver && !!pmsRecipient &&
-            (payment.senderReceiver.toLowerCase().includes(pmsRecipient.toLowerCase()) ||
-             pmsRecipient.toLowerCase().includes(payment.senderReceiver.toLowerCase()));
+        const pmsNameClean = cleanName(pms.recipient);
+        const nameMatch = 
+            isNameMatch(pmsNameClean, cleanName(payment.description)) ||
+            (!!payment.senderReceiver && isNameMatch(pmsNameClean, cleanName(payment.senderReceiver)));
 
         const invoiceNum = extractInvoiceNumber(pms.invoiceNumber ?? pms.invoice?.invoiceNumber ?? null);
         const descMatch  =
