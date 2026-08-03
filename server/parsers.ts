@@ -590,7 +590,7 @@ async function parseBank(filePath: string, encoding: string, delimiter: string):
             const h = row.map(c => c.toLowerCase().trim());
             colMap = {
                 date:        h.findIndex(c => c.includes('valutadatum') || c.includes('buchungstag') || c.includes('datum')),
-                name:        h.findIndex(c => c.includes('auftraggeber') || c.includes('beguenstigter') || c.includes('empfaenger') || c.includes('name')),
+                name:        h.findIndex(c => c.includes('zahlungsbeteiligter') || c.includes('auftraggeber') || c.includes('beguenstigter') || c.includes('empfaenger') || (c.includes('name') && !c.includes('bankname'))),
                 description: h.findIndex(c => c.includes('verwendungszweck') || c.includes('beschreibung') || c.includes('betreff')),
                 amount:      h.findIndex(c => c.includes('betrag') || c.includes('amount')),
             };
