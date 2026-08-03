@@ -9,6 +9,8 @@ interface FileUploadProps {
 
 export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
     const [uploading, setUploading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [progressText, setProgressText] = useState('');
     const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null);
 
     const showToast = (message: string, type: 'success' | 'error' | 'info') => {
@@ -20,6 +22,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
         if (!files || files.length === 0) return;
 
         setUploading(true);
+        setProgress(0);
+        setProgressText('Lade Dateien hoch...');
+        
+        // Connect to progress stream before starting upload
+        const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3010/api';
+        const eventSource = new EventSource(`${API_URL}/progress/stream`);
+        eventSource.onmessage = (event) => {
+            try {
+                const data = JSON.parse(event.data);
+                setProgress(data.progress);
+                setProgressText(data.message);
+            } catch (err) {}
+        };
+
         try {
             const fileArray = Array.from(files);
             const res = await api.uploadFiles(fileArray);
@@ -31,6 +47,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
             console.error('Upload error:', err);
             showToast('Upload fehlgeschlagen', 'error');
         } finally {
+            eventSource.close();
             setUploading(false);
             e.target.value = '';
         }
@@ -49,21 +66,41 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    gap: '1rem',
-                    color: 'white',
-                    fontSize: '1.2rem',
-                    fontWeight: 'bold'
+                    color: 'white'
                 }}>
                     <div style={{
-                        width: '48px', height: '48px',
-                        border: '5px solid rgba(255,255,255,0.3)',
-                        borderTopColor: 'white',
-                        borderRadius: '50%',
-                        animation: 'spin 0.8s linear infinite'
-                    }} />
-                    <div>Dateien werden hochgeladen...</div>
-                    <div style={{ fontSize: '0.9rem', opacity: 0.8, fontWeight: 'normal' }}>
-                        Bitte warten und nicht wegklicken.
+                        background: 'white',
+                        padding: '2rem',
+                        borderRadius: '0.5rem',
+                        boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)',
+                        width: '80%',
+                        maxWidth: '400px',
+                        color: '#1f2937',
+                        textAlign: 'center'
+                    }}>
+                        <div style={{ marginBottom: '1rem', fontWeight: 'bold' }}>Dateien werden verarbeitet...</div>
+                        
+                        {/* Progress Bar Container */}
+                        <div style={{
+                            width: '100%',
+                            height: '1rem',
+                            backgroundColor: '#e5e7eb',
+                            borderRadius: '9999px',
+                            overflow: 'hidden',
+                            marginBottom: '0.5rem'
+                        }}>
+                            {/* Progress Bar Fill */}
+                            <div style={{
+                                width: `${progress}%`,
+                                height: '100%',
+                                backgroundColor: '#4f46e5',
+                                transition: 'width 0.3s ease-out'
+                            }} />
+                        </div>
+                        
+                        <div style={{ fontSize: '0.875rem', color: '#6b7280' }}>
+                            {progressText}
+                        </div>
                     </div>
                 </div>
             )}

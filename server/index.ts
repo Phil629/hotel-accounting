@@ -96,9 +96,15 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
         }
 
         const results = [];
+        const totalFiles = files.length;
+        let processedCount = 0;
 
         for (const file of files) {
             try {
+                const progress = Math.round((processedCount / totalFiles) * 100);
+                const data = JSON.stringify({ progress, message: `Verarbeite Datei ${processedCount + 1} von ${totalFiles}: ${file.originalname}` });
+                sseClients.forEach(c => c.write(`data: ${data}\n\n`));
+
                 const result = await processFile(file.path);
 
                 // Auto-rename: prefix with type + month + year for easy identification
@@ -130,13 +136,27 @@ app.post('/api/upload', upload.array('files'), async (req, res) => {
                     type:         result.type,
                     count:        result.count,
                 });
-            } catch (e) {
-                console.error(`Error processing ${file.originalname}:`, e);
+} catch (fileErr: any) {
+                console.error(`Error processing ${file.originalname}:`, fileErr);
+                results.push({
+                    filename:     file.originalname,
+                    originalName: file.originalname,
+                    status:       'error',
+                    error:        fileErr.message
+                });
+            }
+            processedCount++;
+        }
+        
+        const finalData = JSON.stringify({ progress: 100, message: 'Upload abgeschlossen!' });
+        sseClients.forEach(c => c.write(`data: ${finalData}\n\n`));
 
-                await prisma.importedFile.create({
-                    data: {
-                        filename:     file.originalname,
-                        originalName: file.originalname,
+        res.json({ results });
+    } catch (error) {
+        console.error('Upload error:', error);
+        res.status(500).json({ error: 'File upload failed' });
+    }
+});
                         type:         'ERROR',
                         recordCount:  0,
                         logs:         JSON.stringify([`Error: ${String(e)}`]),
@@ -207,7 +227,7 @@ app.get('/api/import-status', async (_req, res) => {
 // Run reconciliation
 let sseClients: any[] = [];
 
-app.get('/api/reconcile/stream', (req, res) => {
+app.get('/api/progress/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
@@ -483,4 +503,6 @@ app.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
     console.log(`Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
 });
+
+
 
