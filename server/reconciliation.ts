@@ -152,7 +152,9 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         let match = null;
         if (pms.invoiceNumber) {
             const pmsNum = extractInvoiceNumber(pms.invoiceNumber);
-            match = allInvoices.find(inv => inv.extractedNum === pmsNum);
+            if (pmsNum) {
+                match = allInvoices.find(inv => inv.extractedNum === pmsNum);
+            }
         }
         if (!match && pms.recipient) {
             const pmsNameClean = cleanName(pms.recipient);
