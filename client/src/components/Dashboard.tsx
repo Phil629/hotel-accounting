@@ -137,7 +137,7 @@ export const Dashboard: React.FC = () => {
         setProgress(0);
         setProgressText('Verbinde mit Server...');
 
-        const eventSource = new EventSource(`${API_URL}/reconcile/stream`);
+        const eventSource = new EventSource(`${API_URL}/progress/stream`);
 
         eventSource.onmessage = (event) => {
             try {
