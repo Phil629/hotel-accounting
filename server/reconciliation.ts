@@ -46,8 +46,16 @@ function differenceInDays(d1: Date, d2: Date): number {
 
 function extractInvoiceNumber(fullNumber: string | null | undefined): string | null {
     if (!fullNumber) return null;
+    
+    // Explicit Ibelsa "Rechnung" format
     const exactMatch = fullNumber.match(/Rechnung\s+(\d+)/i);
     if (exactMatch) return exactMatch[1];
+    
+    // Explicit Ibelsa "Folio" format - DO NOT extract as invoice number!
+    // Folio IDs and Invoice IDs overlap in Ibelsa but are unrelated.
+    if (fullNumber.toLowerCase().includes('folio')) {
+        return null;
+    }
     
     const currentYear = new Date().getFullYear().toString();
     const withoutYear = fullNumber.replace(new RegExp(`\\b${currentYear}\\b`, 'g'), '');
