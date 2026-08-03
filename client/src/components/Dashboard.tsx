@@ -135,7 +135,7 @@ export const Dashboard: React.FC = () => {
     const handleReconcile = async () => {
         setReconciling(true);
         setProgress(0);
-        setProgressText('Verbinde mit Server...');
+        setProgressText('Verbinde mit Server... Bitte das Fenster nicht schließen, dieser Vorgang kann einen Moment dauern.');
 
         const eventSource = new EventSource(`${API_URL}/progress/stream`);
 
@@ -146,6 +146,9 @@ export const Dashboard: React.FC = () => {
                 setProgressText(data.message);
             } catch (err) {}
         };
+
+        // Give the SSE connection a moment to establish before blocking the server
+        await new Promise(r => setTimeout(r, 1000));
 
         try {
             const res = await api.reconcile();
