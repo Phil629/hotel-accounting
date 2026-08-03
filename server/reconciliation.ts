@@ -80,50 +80,67 @@ export async function runReconciliation(onProgress?: (progress: number, message:
 
     // 1. Link RoomReservations to Invoices
     const unlinkedRooms = await prisma.roomReservation.findMany({ where: { invoiceId: null } });
-    const allInvoices = await prisma.invoice.findMany();
+    const allInvoicesRaw = await prisma.invoice.findMany();
+    
+    // Cache expensive string operations
+    const allInvoices = allInvoicesRaw.map(inv => ({
+        ...inv,
+        cleanName: cleanName(inv.recipient),
+        extractedNum: extractInvoiceNumber(inv.invoiceNumber)
+    }));
+
+    const roomUpdates: Prisma.PrismaPromise<any>[] = [];
     
     for (const room of unlinkedRooms) {
         const roomNameClean = cleanName(room.guestName);
         const match = allInvoices.find(inv => {
-            const invNameClean = cleanName(inv.recipient);
-            const nameMatch = invNameClean.includes(roomNameClean) || roomNameClean.includes(invNameClean);
+            const nameMatch = inv.cleanName.includes(roomNameClean) || roomNameClean.includes(inv.cleanName);
             const dateMatch = Math.abs(differenceInDays(room.checkOut, inv.invoiceDate)) <= 3;
             return nameMatch && dateMatch;
         });
         
         if (match) {
-            await prisma.roomReservation.update({
+            roomUpdates.push(prisma.roomReservation.update({
                 where: { id: room.id },
                 data: { invoiceId: match.id }
-            });
+            }));
         }
+    }
+    
+    if (roomUpdates.length > 0) {
+        await prisma.$transaction(roomUpdates);
     }
 
     // 2. Link PmsPayments to Invoices
     notify(20, 'Verknüpfe Zahlungsberichte mit Rechnungen... (Schritt 2/5)');
     const unlinkedPms = await prisma.pmsPayment.findMany({ where: { invoiceId: null } });
+    const pmsUpdates: Prisma.PrismaPromise<any>[] = [];
+    
     for (const pms of unlinkedPms) {
         let match = null;
         if (pms.invoiceNumber) {
             const pmsNum = extractInvoiceNumber(pms.invoiceNumber);
-            match = allInvoices.find(inv => extractInvoiceNumber(inv.invoiceNumber) === pmsNum);
+            match = allInvoices.find(inv => inv.extractedNum === pmsNum);
         }
         if (!match && pms.recipient) {
             const pmsNameClean = cleanName(pms.recipient);
             match = allInvoices.find(inv => {
-                const invNameClean = cleanName(inv.recipient);
-                const nameMatch = invNameClean.includes(pmsNameClean) || pmsNameClean.includes(invNameClean);
+                const nameMatch = inv.cleanName.includes(pmsNameClean) || pmsNameClean.includes(inv.cleanName);
                 const dateMatch = Math.abs(differenceInDays(pms.paymentDate, inv.invoiceDate)) <= 3;
                 return nameMatch && dateMatch;
             });
         }
         
         if (match) {
-            await prisma.pmsPayment.update({
+            pmsUpdates.push(prisma.pmsPayment.update({
                 where: { id: pms.id },
                 data: { invoiceId: match.id }
-            });
+            }));
         }
+    }
+    
+    if (pmsUpdates.length > 0) {
+        await prisma.$transaction(pmsUpdates);
     }
 
     // 3. Update Invoice amounts and statuses
@@ -131,6 +148,8 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     const invoicesWithPayments = await prisma.invoice.findMany({
         include: { pmsPayments: true }
     });
+    
+    const invoiceUpdates: Prisma.PrismaPromise<any>[] = [];
     
     for (const inv of invoicesWithPayments) {
         let paid = 0;
@@ -145,10 +164,14 @@ export async function runReconciliation(onProgress?: (progress: number, message:
             continue;
         }
         
-        await prisma.invoice.update({
+        invoiceUpdates.push(prisma.invoice.update({
             where: { id: inv.id },
             data: { amountPaid: paid, status }
-        });
+        }));
+    }
+    
+    if (invoiceUpdates.length > 0) {
+        await prisma.$transaction(invoiceUpdates);
     }
 
     // 4. Match PmsPayments against Bank/Card/Booking
@@ -237,18 +260,25 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     });
     
     let fullyReconciled = 0;
+    const reconcileUpdates: Prisma.PrismaPromise<any>[] = [];
+    const now = new Date();
+    
     for (const inv of allInvoicesToCheck) {
         if (inv.isReconciled) continue;
         if (inv.status === 'PAID' && inv.pmsPayments.length > 0) {
             const allMatched = inv.pmsPayments.every(p => p.matches.length > 0 || p.paymentType.toLowerCase().includes('bar'));
             if (allMatched) {
-                await prisma.invoice.update({
+                reconcileUpdates.push(prisma.invoice.update({
                     where: { id: inv.id },
-                    data: { isReconciled: true, reconciledDate: new Date() }
-                });
+                    data: { isReconciled: true, reconciledDate: now }
+                }));
                 fullyReconciled++;
             }
         }
+    }
+    
+    if (reconcileUpdates.length > 0) {
+        await prisma.$transaction(reconcileUpdates);
     }
 
     console.log(`Reconciliation complete. ${fullyReconciled} invoices fully matched.`);
