@@ -139,8 +139,8 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
     
-    if (roomUpdates.length > 0) {
-        await prisma.$transaction(roomUpdates);
+    for (let i = 0; i < roomUpdates.length; i += 50) {
+        await prisma.$transaction(roomUpdates.slice(i, i + 50));
     }
 
     // 2. Link PmsPayments to Invoices
@@ -171,8 +171,8 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
     
-    if (pmsUpdates.length > 0) {
-        await prisma.$transaction(pmsUpdates);
+    for (let i = 0; i < pmsUpdates.length; i += 50) {
+        await prisma.$transaction(pmsUpdates.slice(i, i + 50));
     }
 
     // 3. Update Invoice amounts and statuses
@@ -202,8 +202,8 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }));
     }
     
-    if (invoiceUpdates.length > 0) {
-        await prisma.$transaction(invoiceUpdates);
+    for (let i = 0; i < invoiceUpdates.length; i += 50) {
+        await prisma.$transaction(invoiceUpdates.slice(i, i + 50));
     }
 
     // 4. Match PmsPayments against Bank/Card/Booking
@@ -292,7 +292,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     });
     
     let fullyReconciled = 0;
-    const reconcileUpdates: Prisma.PrismaPromise<any>[] = [];
+    const reconcileUpdateIds: number[] = [];
     const now = new Date();
     
     for (const inv of allInvoicesToCheck) {
@@ -300,17 +300,20 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (inv.status === 'PAID' && inv.pmsPayments.length > 0) {
             const allMatched = inv.pmsPayments.every(p => p.matches.length > 0 || p.paymentType.toLowerCase().includes('bar'));
             if (allMatched) {
-                reconcileUpdates.push(prisma.invoice.update({
-                    where: { id: inv.id },
-                    data: { isReconciled: true, reconciledDate: now }
-                }));
+                reconcileUpdateIds.push(inv.id);
                 fullyReconciled++;
             }
         }
     }
     
-    if (reconcileUpdates.length > 0) {
-        await prisma.$transaction(reconcileUpdates);
+    if (reconcileUpdateIds.length > 0) {
+        // Group into chunks of 1000 for safety
+        for (let i = 0; i < reconcileUpdateIds.length; i += 1000) {
+            await prisma.invoice.updateMany({
+                where: { id: { in: reconcileUpdateIds.slice(i, i + 1000) } },
+                data: { isReconciled: true, reconciledDate: now }
+            });
+        }
     }
 
     console.log(`Reconciliation complete. ${fullyReconciled} invoices fully matched.`);
