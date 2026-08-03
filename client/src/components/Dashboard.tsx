@@ -905,8 +905,8 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                 <div style={{ fontWeight: 'bold' }}>{Number(inv.amount).toFixed(2)} €</div>
                 {(inv.tax7Amount || inv.tax19Amount || inv.cityTaxAmount) && (
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
-                        {inv.tax7Amount ? <div>Zimmer: {Number(inv.tax7Amount).toFixed(2)} €</div> : null}
-                        {inv.tax19Amount ? <div>F&amp;B: {Number(inv.tax19Amount).toFixed(2)} €</div> : null}
+                        {inv.tax7Amount ? <div>7% Umsatz: {Number(inv.tax7Amount).toFixed(2)} €</div> : null}
+                        {inv.tax19Amount ? <div>19% Umsatz: {Number(inv.tax19Amount).toFixed(2)} €</div> : null}
                         {inv.cityTaxAmount ? <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div> : null}
                     </div>
                 )}

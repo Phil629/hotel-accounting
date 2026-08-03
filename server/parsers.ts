@@ -372,10 +372,11 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
             
             const is7Percent = Math.abs(mwst - 7) < 0.1;
             const is19Percent = Math.abs(mwst - 19) < 0.1;
+            const is0Percent = Math.abs(mwst) < 0.1;
 
             if (existing) {
                 existing.amount += amount;
-                existing.cityTaxAmount = (existing.cityTaxAmount || 0) + ba;
+                existing.cityTaxAmount = (existing.cityTaxAmount || 0) + ba + (is0Percent ? amount : 0);
                 existing.netAmount = (existing.netAmount || 0) + netto;
                 if (is7Percent) existing.tax7Amount = (existing.tax7Amount || 0) + amount;
                 if (is19Percent) existing.tax19Amount = (existing.tax19Amount || 0) + amount;
@@ -391,12 +392,14 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                     invoiceNumber:  number,
                     recipient,
                     amount:         amount,
-                    cityTaxAmount:  ba,
+                    cityTaxAmount:  ba + (is0Percent ? amount : 0),
                     netAmount:      netto,
                     tax7Amount:     is7Percent ? amount : 0,
                     tax19Amount:    is19Percent ? amount : 0,
                     amountPaid:     0,
-                    status:         'OPEN'
+                    status:         'OPEN',
+                    isReconciled:   false,
+                    manualStatus:   false,
                 });
                 count++;
             }
