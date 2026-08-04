@@ -695,15 +695,18 @@ async function parseNexi(filePath: string, encoding: string, delimiter: string):
 async function parseRechnungskorrekturen(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
     const stream = buildCsvStream(filePath, encoding, delimiter);
     let headerMapped = false;
-    let colMap = { number: -1 };
+    let colMap = { number: -1, date: -1 };
     let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
     const canceledNumbers = new Set<string>();
 
     for await (const row of stream) {
         if (!headerMapped) {
             const h = row.map(c => c.toLowerCase().trim());
             colMap = {
-                number: h.findIndex(c => c === 'rechnungsnummer')
+                number: h.findIndex(c => c === 'rechnungsnummer'),
+                date: h.findIndex(c => c === 'datum')
             };
             if (colMap.number !== -1) headerMapped = true;
             continue;
@@ -712,6 +715,14 @@ async function parseRechnungskorrekturen(filePath: string, encoding: string, del
         if (colMap.number === -1) continue;
         const rawNum = row[colMap.number]?.trim();
         if (!rawNum) continue;
+        
+        if (colMap.date !== -1 && row[colMap.date]) {
+            const parsedDate = parseDate(row[colMap.date]);
+            if (parsedDate) {
+                if (!minDate || parsedDate < minDate) minDate = parsedDate;
+                if (!maxDate || parsedDate > maxDate) maxDate = parsedDate;
+            }
+        }
 
         canceledNumbers.add(rawNum);
         count++;
@@ -740,7 +751,12 @@ async function parseRechnungskorrekturen(filePath: string, encoding: string, del
         }
     }
 
-    return { type: 'RECHNUNGSKORREKTUR', count };
+    return { 
+        type: 'RECHNUNGSKORREKTUR', 
+        count, 
+        dateRangeStart: minDate || undefined, 
+        dateRangeEnd: maxDate || undefined 
+    };
 }
 
 
