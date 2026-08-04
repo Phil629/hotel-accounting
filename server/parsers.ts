@@ -520,12 +520,14 @@ async function parseZimmeruebersicht(filePath: string, encoding: string, delimit
             const roomName  = colMap.roomName  > -1 ? row[colMap.roomName]?.trim() : '';
             const checkIn   = colMap.checkIn   > -1 ? parseDate(row[colMap.checkIn]) : null;
             const checkOut  = colMap.checkOut  > -1 ? parseDate(row[colMap.checkOut]) : null;
-            const nights    = colMap.nights    > -1 ? parseInt(row[colMap.nights], 10) : 0;
+            let nights      = colMap.nights    > -1 ? parseInt(row[colMap.nights], 10) : 0;
+            if (isNaN(nights)) nights = 0;
             const guestName = colMap.guestName > -1 ? row[colMap.guestName]?.trim() : '';
-            const pax       = colMap.pax       > -1 ? parseInt(row[colMap.pax], 10) : 0;
+            let pax         = colMap.pax       > -1 ? parseInt(row[colMap.pax], 10) : 1;
+            if (isNaN(pax)) pax = 1;
             const price     = colMap.price     > -1 ? parseAmount(row[colMap.price]) : 0;
 
-            if (!checkIn || !roomName) continue;
+            if (!checkIn || !checkOut || !roomName) continue;
 
             const isAirbnb = roomName === '507';
             let cityTax = null;
