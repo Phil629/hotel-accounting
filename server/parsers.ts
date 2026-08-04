@@ -735,7 +735,7 @@ async function parseRechnungskorrekturen(filePath: string, encoding: string, del
                 update: { status: 'CANCELED', amount: 0, amountPaid: 0 },
                 create: { 
                     invoiceNumber: num, 
-                    invoiceDate: new Date(), 
+                    invoiceDate: new Date(0), 
                     paymentType: '', 
                     recipient: 'Storno / Canceled', 
                     amount: 0, 

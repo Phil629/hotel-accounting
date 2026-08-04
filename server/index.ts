@@ -52,7 +52,7 @@ const upload = multer({
     storage,
     limits: {
         fileSize: 50 * 1024 * 1024, // 50 MB per file
-        files: 10,                   // max 10 files per request
+        files: 100,                   // max 10 files per request
     },
     fileFilter: (_req, file, cb) => {
         if (!file.originalname.match(/\.(csv|txt)$/i)) {
