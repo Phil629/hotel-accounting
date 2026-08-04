@@ -9,7 +9,7 @@ import prisma from './db';
 const BATCH_SIZE = 500;
 
 interface ParsedData {
-    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'UNKNOWN';
+    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'RECHNUNGSKORREKTUR' | 'UNKNOWN';
     count: number;
     dateRangeStart?: Date;
     dateRangeEnd?: Date;
@@ -212,6 +212,10 @@ export async function processFile(filePath: string): Promise<ParsedData> {
         (headerLower.includes('booking number') && headerLower.includes('amount'))
     ) {
         return parseBooking(filePath, encoding, delimiter);
+    }
+
+    if (headerLower.includes('rechnungsnummer') && headerLower.includes('rechnungskorrektur')) {
+        return parseRechnungskorrekturen(filePath, encoding, delimiter);
     }
 
     if (headerLower.includes('rechnungsnummer') && headerLower.includes('brutto betrag')) {
@@ -686,3 +690,59 @@ async function parseNexi(filePath: string, encoding: string, delimiter: string):
     await flushBatch();
     return { type: 'NEXI', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
+
+
+async function parseRechnungskorrekturen(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
+    let headerMapped = false;
+    let colMap = { number: -1 };
+    let count = 0;
+    const canceledNumbers = new Set<string>();
+
+    for await (const row of stream) {
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                number: h.findIndex(c => c === 'rechnungsnummer')
+            };
+            if (colMap.number !== -1) headerMapped = true;
+            continue;
+        }
+
+        if (colMap.number === -1) continue;
+        const rawNum = row[colMap.number]?.trim();
+        if (!rawNum) continue;
+
+        canceledNumbers.add(rawNum);
+        count++;
+    }
+
+    if (canceledNumbers.size > 0) {
+        const updates = Array.from(canceledNumbers).map(num => 
+            prisma.invoice.upsert({
+                where: { invoiceNumber: num },
+                update: { status: 'CANCELED', amount: 0, amountPaid: 0 },
+                create: { 
+                    invoiceNumber: num, 
+                    invoiceDate: new Date(), 
+                    paymentType: '', 
+                    recipient: 'Storno / Canceled', 
+                    amount: 0, 
+                    amountPaid: 0, 
+                    status: 'CANCELED' 
+                }
+            })
+        );
+
+        // Group into chunks
+        for (let i = 0; i < updates.length; i += 50) {
+            await prisma.$transaction(updates.slice(i, i + 50));
+        }
+    }
+
+    return { type: 'RECHNUNGSKORREKTUR', count };
+}
+
+
+
+

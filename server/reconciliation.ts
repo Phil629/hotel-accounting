@@ -153,16 +153,24 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (pms.invoiceNumber) {
             const pmsNum = extractInvoiceNumber(pms.invoiceNumber);
             if (pmsNum) {
-                match = allInvoices.find(inv => inv.extractedNum === pmsNum);
+                match = allInvoices.find(inv => inv.extractedNum === pmsNum && inv.status !== 'CANCELED');
             }
         }
         if (!match && pms.recipient) {
             const pmsNameClean = cleanName(pms.recipient);
-            match = allInvoices.find(inv => {
+            const candidates = allInvoices.filter(inv => {
+                if (inv.status === 'CANCELED') return false;
                 const nameMatch = isNameMatch(inv.cleanName, pmsNameClean);
                 const dateMatch = Math.abs(differenceInDays(pms.paymentDate, inv.invoiceDate)) <= 3;
                 return nameMatch && dateMatch;
             });
+            
+            if (candidates.length === 1) {
+                match = candidates[0];
+            } else if (candidates.length > 1) {
+                const exactMatch = candidates.find(inv => Number(inv.amount) === Number(pms.amount));
+                match = exactMatch || candidates[0];
+            }
         }
         
         if (match) {

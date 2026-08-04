@@ -276,7 +276,10 @@ app.get('/api/invoices', async (req, res) => {
         }
 
         const invoices = await prisma.invoice.findMany({
-            where:   { OR: orConditions },
+            where:   { 
+                status: { not: 'CANCELED' },
+                OR: orConditions 
+            },
             include: {
                 matches: {
                     include: {
