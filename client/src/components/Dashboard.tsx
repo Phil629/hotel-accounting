@@ -901,7 +901,24 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
     return (
         <tr style={{ backgroundColor: rowColor, color: textColor }}>
             <td>{new Date(inv.invoiceDate).toLocaleDateString('de-DE')}</td>
-            <td>{inv.invoiceNumber}</td>
+            <td>
+                {inv.invoiceNumber}
+                {inv.roomReservations?.some(r => r.isAirbnb) && (
+                    <span style={{ 
+                        marginLeft: '8px', 
+                        backgroundColor: '#ff385c', 
+                        color: 'white', 
+                        padding: '2px 6px', 
+                        borderRadius: '4px', 
+                        fontSize: '0.7rem', 
+                        fontWeight: 'bold',
+                        display: 'inline-block',
+                        verticalAlign: 'middle'
+                    }}>
+                        Airbnb
+                    </span>
+                )}
+            </td>
             <td>{inv.recipient}</td>
             <td>{getPaymentTypes(inv)}</td>
             <td>

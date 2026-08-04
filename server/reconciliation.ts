@@ -180,7 +180,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     // 3. Update Invoice amounts and statuses
     notify(35, 'Aktualisiere Rechnungsstatus (Bezahlt/Offen)... (Schritt 3/5)');
     const invoicesWithPayments = await prisma.invoice.findMany({
-        include: { pmsPayments: true }
+        include: { pmsPayments: true, roomReservations: true }
     });
     
     const invoiceUpdates: Prisma.PrismaPromise<any>[] = [];
@@ -191,8 +191,18 @@ export async function runReconciliation(onProgress?: (progress: number, message:
             paid += Number(p.amount);
         }
         let status = 'OPEN';
-        if (paid >= Number(inv.amount) - 0.05) status = 'PAID';
-        else if (paid > 0) status = 'PARTIAL';
+        
+        const isAirbnb = inv.roomReservations.some(r => r.isAirbnb);
+        const isBar = inv.paymentType?.toLowerCase().includes('bar');
+        
+        if (isAirbnb || isBar) {
+            paid = Number(inv.amount);
+            status = 'PAID';
+        } else if (paid >= Number(inv.amount) - 0.05) {
+            status = 'PAID';
+        } else if (paid > 0) {
+            status = 'PARTIAL';
+        }
         
         if (Number(inv.amountPaid) === paid && inv.status === status) {
             continue;
@@ -282,6 +292,57 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
 
+    notify(90, 'Suche nach gebündelten Kartenzahlungen (N:1)...');
+    const unmatchedPmsCards = pmsPaymentsToMatch.filter(pms => 
+        isCardPayment(pms.paymentType) && !matchedPmsIds.has(pms.id)
+    );
+    
+    const pmsGroups = new Map<string, typeof unmatchedPmsCards>();
+    for (const pms of unmatchedPmsCards) {
+        const cGroup = getCardGroup(pms.paymentType);
+        const dateStr = pms.paymentDate.toISOString().split('T')[0];
+        const key = `${dateStr}_${cGroup}`;
+        if (!pmsGroups.has(key)) pmsGroups.set(key, []);
+        pmsGroups.get(key)!.push(pms);
+    }
+    
+    for (const [key, group] of pmsGroups.entries()) {
+        if (group.length <= 1) continue; 
+        
+        const totalCents = group.reduce((sum, p) => sum + Math.round(Number(p.amount) * 100), 0);
+        const [dateStr, cGroupStr] = key.split('_');
+        const pmsDate = new Date(dateStr);
+        const cGroup = parseInt(cGroupStr, 10);
+        
+        const candidate = availableCards.find(c => {
+            if (matchedCardIds.has(c.id)) return false;
+            const cents = Math.round(Number(c.amount) * 100);
+            if (cents !== totalCents) return false;
+            
+            const diffDays = Math.abs(differenceInDays(pmsDate, c.transactionDate));
+            if (diffDays > DATE_TOLERANCE_DAYS) return false;
+            
+            const nexiGroup = getCardGroup(c.cardType);
+            if (nexiGroup !== 0 && cGroup !== 0 && nexiGroup !== cGroup) return false;
+            
+            return true;
+        });
+        
+        if (candidate) {
+            matchedCardIds.add(candidate.id);
+            for (const pms of group) {
+                matchedPmsIds.add(pms.id);
+                matchesToCreate.push({
+                    invoiceId:     pms.invoiceId as number,
+                    pmsPaymentId:  pms.id,
+                    cardPaymentId: candidate.id,
+                    matchType:     'AUTOMATIC_GROUPED',
+                    confidence:    0.9,
+                });
+            }
+        }
+    }
+
     notify(95, `Speichere ${matchesToCreate.length} Matches in der Datenbank... (Schritt 5/5)`);
 
     // Group into batches of 500
@@ -290,7 +351,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     }
 
     const allInvoicesToCheck = await prisma.invoice.findMany({
-        include: { pmsPayments: { include: { matches: true } } }
+        include: { pmsPayments: { include: { matches: true } }, roomReservations: true }
     });
     
     let fullyReconciled = 0;
@@ -299,11 +360,20 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     
     for (const inv of allInvoicesToCheck) {
         if (inv.isReconciled) continue;
-        if (inv.status === 'PAID' && inv.pmsPayments.length > 0) {
-            const allMatched = inv.pmsPayments.every(p => p.matches.length > 0 || p.paymentType.toLowerCase().includes('bar'));
-            if (allMatched) {
+        
+        const isAirbnb = inv.roomReservations.some(r => r.isAirbnb);
+        const isBar = inv.paymentType?.toLowerCase().includes('bar');
+        
+        if (isAirbnb || isBar || (inv.status === 'PAID' && inv.pmsPayments.length > 0)) {
+            if (isAirbnb || isBar) {
                 reconcileUpdateIds.push(inv.id);
                 fullyReconciled++;
+            } else {
+                const allMatched = inv.pmsPayments.every(p => p.matches.length > 0 || p.paymentType.toLowerCase().includes('bar'));
+                if (allMatched) {
+                    reconcileUpdateIds.push(inv.id);
+                    fullyReconciled++;
+                }
             }
         }
     }
