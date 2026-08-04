@@ -168,6 +168,21 @@ export const Guide: React.FC = () => {
                             }
                             imageSrc="/guide/ibelsa_eigentuemernachweis.png"
                         />
+                        <Step
+                            number={4}
+                            title="Rechnungskorrekturen-Bericht exportieren"
+                            description={
+                                <div>
+                                    <p className="mb-2">Navigieren Sie zu <strong className="text-green-600">Berichte</strong> → <strong className="text-green-600">Rechnungskorrekturen-Bericht</strong>.</p>
+                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
+                                        <li>Sortieren nach: <strong>Rechnungskorrektur-Nummer</strong></li>
+                                        <li>Start- und Enddatum (wie bei Schritt 1-3) einstellen</li>
+                                        <li>Haken setzen bei: <strong>CSV (Excel) Export</strong></li>
+                                    </ul>
+                                </div>
+                            }
+                            imageSrc="/guide/ibelsa_rechnungskorrekturen.png"
+                        />
                     </div>
                 )}
             </div>
