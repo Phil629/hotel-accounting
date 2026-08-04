@@ -39,7 +39,20 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
         try {
             const fileArray = Array.from(files);
             const res = await api.uploadFiles(fileArray);
-            showToast(`Upload abgeschlossen! ${res.results.length} Datei(en) verarbeitet.`, 'success');
+            
+            const errorCount = res.results?.filter((r: any) => r.status === 'error').length || 0;
+            const successCount = (res.results?.length || 0) - errorCount;
+
+            if (errorCount > 0) {
+                if (successCount === 0) {
+                    showToast(`Upload fehlgeschlagen für ${errorCount} Datei(en). (Siehe Historie für Details)`, 'error');
+                } else {
+                    showToast(`Upload: ${successCount} erfolgreich, ${errorCount} fehlgeschlagen. (Siehe Historie)`, 'error');
+                }
+            } else {
+                showToast(`Upload abgeschlossen! ${res.results.length} Datei(en) verarbeitet.`, 'success');
+            }
+
             if (onUploadComplete) {
                 onUploadComplete();
             }
