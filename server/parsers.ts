@@ -775,6 +775,13 @@ async function parseStornoPDF(filePath: string): Promise<ParsedData> {
     
     let currentType: string | null = null;
     
+    interface ParsedLine {
+        nameQuery: string;
+        type: string;
+        startDate: Date;
+    }
+    const parsedLines: ParsedLine[] = [];
+    
     for (const line of lines) {
         if (line.includes('NO-SHOWS')) { currentType = 'NO-SHOW'; continue; }
         if (line.includes('STORNIERUNG')) { currentType = 'STORNO'; continue; }
@@ -790,24 +797,47 @@ async function parseStornoPDF(filePath: string): Promise<ParsedData> {
             let nameQuery = guestName;
             if (parts.length === 2) nameQuery = parts[0]; 
             
-            const invoices = await prisma.invoice.findMany({
-                where: {
-                    OR: [
-                        { recipient: { contains: nameQuery, mode: 'insensitive' } },
-                        { roomReservations: { some: { guestName: { contains: nameQuery, mode: 'insensitive' } } } }
-                    ]
-                }
-            });
-            
-            if (invoices.length > 0) {
-                for (const inv of invoices) {
-                    await prisma.invoice.update({
-                        where: { id: inv.id },
-                        data: { cancellationType: currentType }
-                    });
-                    count++;
-                }
+            const startDate = parseDate(dateMatch[1]);
+            if (startDate) {
+                parsedLines.push({ nameQuery: nameQuery.toLowerCase(), type: currentType, startDate });
             }
+        }
+    }
+    
+    if (parsedLines.length > 0) {
+        // Find date range
+        const dates = parsedLines.map(p => p.startDate.getTime());
+        const minDate = new Date(Math.min(...dates) - 30 * 24 * 60 * 60 * 1000); // 30 days before
+        const maxDate = new Date(Math.max(...dates) + 30 * 24 * 60 * 60 * 1000); // 30 days after
+        
+        // Fetch all invoices in this range once
+        const invoices = await prisma.invoice.findMany({
+            where: {
+                invoiceDate: { gte: minDate, lte: maxDate }
+            },
+            include: { roomReservations: true }
+        });
+        
+        const invoicesToUpdate = new Map<number, string>(); // invoiceId -> cancellationType
+        
+        for (const pLine of parsedLines) {
+            const matches = invoices.filter(inv => 
+                (inv.recipient && inv.recipient.toLowerCase().includes(pLine.nameQuery)) ||
+                inv.roomReservations.some(rr => rr.guestName && rr.guestName.toLowerCase().includes(pLine.nameQuery))
+            );
+            
+            for (const match of matches) {
+                invoicesToUpdate.set(match.id, pLine.type);
+            }
+        }
+        
+        // Update all matched invoices
+        for (const [invId, type] of invoicesToUpdate.entries()) {
+            await prisma.invoice.update({
+                where: { id: invId },
+                data: { cancellationType: type }
+            });
+            count++;
         }
     }
     
