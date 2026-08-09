@@ -36,6 +36,9 @@ model Invoice {
   dunningMethod     String?  // "Email", "Post"
   dunningDate       DateTime?
 
+  // Cancellation
+  cancellationType  String?  // "STORNO" or "NO-SHOW"
+
   // Relations
   matches           ReconciliationMatch[]
   pmsPayments       PmsPayment[]
@@ -77,6 +80,7 @@ model BookingPayment {
   payoutDate        DateTime?
   amount            Decimal  @db.Decimal(12, 2)
   currency          String   @default("EUR")
+  guestName         String?
 
   // Relations
   matches           ReconciliationMatch[]

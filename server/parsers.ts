@@ -9,7 +9,7 @@ import prisma from './db';
 const BATCH_SIZE = 500;
 
 interface ParsedData {
-    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'RECHNUNGSKORREKTUR' | 'UNKNOWN';
+    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'RECHNUNGSKORREKTUR' | 'STORNO_PDF' | 'UNKNOWN';
     count: number;
     dateRangeStart?: Date;
     dateRangeEnd?: Date;
@@ -195,6 +195,11 @@ async function executeBatched(ops: Prisma.PrismaPromise<unknown>[]): Promise<voi
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 export async function processFile(filePath: string): Promise<ParsedData> {
+    if (filePath.toLowerCase().endsWith('.pdf')) {
+        console.log(`Processing PDF: ${path.basename(filePath)}`);
+        return parseStornoPDF(filePath);
+    }
+
     const { encoding, delimiter, header } = await readFileMetadata(filePath);
 
     console.log(`Processing: ${path.basename(filePath)} [encoding: ${encoding}, delimiter: '${delimiter}']`);
@@ -259,7 +264,7 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
     const stream = buildCsvStream(filePath, encoding, delimiter);
 
     let headerMapped = false;
-    let colMap = { ref: -1, checkIn: -1, checkOut: -1, amount: -1, payout: -1 };
+    let colMap = { ref: -1, checkIn: -1, checkOut: -1, amount: -1, payout: -1, guestName: -1 };
     let count = 0;
     let minDate: Date | null = null;
     let maxDate: Date | null = null;
@@ -281,6 +286,7 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
                 checkOut: h.findIndex(c => c.includes('check-out') || c.includes('abreise')),
                 amount:   h.findIndex(c => c.includes('betrag')    || c.includes('amount') || c.includes('total')),
                 payout:   h.findIndex(c => c.includes('auszahlungsdatum') || c.includes('payout date') || c.includes('datum der auszahlung')),
+                guestName: h.findIndex(c => c.includes('gast')      || c.includes('guest')),
             };
             logs.push(`Column mapping: ${JSON.stringify(colMap)}`);
             if (colMap.ref === -1 || colMap.amount === -1) {
@@ -297,6 +303,7 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
             const checkOut = colMap.checkOut > -1 ? parseDate(row[colMap.checkOut]) : null;
             const payout   = colMap.payout   > -1 ? parseDate(row[colMap.payout])   : null;
             const amount   = parseAmount(row[colMap.amount]);
+            const guestName = colMap.guestName > -1 ? row[colMap.guestName]?.trim() : null;
 
             if (!ref || !amount) continue;
 
@@ -306,6 +313,7 @@ async function parseBooking(filePath: string, encoding: string, delimiter: strin
                 checkOutDate: checkOut,
                 payoutDate:   payout,
                 amount,
+                guestName:    guestName ?? undefined,
             });
             count++;
             if (checkIn) [minDate, maxDate] = updateDateRange(checkIn, minDate, maxDate);
@@ -400,9 +408,9 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                     netAmount:      netto,
                     tax7Amount:     is7Percent ? amount : 0,
                     tax19Amount:    is19Percent ? amount : 0,
-                    amountPaid:     0,
-                    status:         'OPEN',
-                    isReconciled:   false,
+                    amountPaid:     amount === 0 ? 0 : 0,
+                    status:         amount === 0 ? 'PAID' : 'OPEN',
+                    isReconciled:   amount === 0 ? true : false,
                     manualStatus:   false,
                 });
                 count++;
@@ -759,6 +767,49 @@ async function parseRechnungskorrekturen(filePath: string, encoding: string, del
     };
 }
 
-
-
-
+async function parseStornoPDF(filePath: string): Promise<ParsedData> {
+    const pdfParse = require('pdf-parse');
+    const data = await pdfParse(fs.readFileSync(filePath));
+    const lines = data.text.split('\n');
+    let count = 0;
+    
+    let currentType: string | null = null;
+    
+    for (const line of lines) {
+        if (line.includes('NO-SHOWS')) { currentType = 'NO-SHOW'; continue; }
+        if (line.includes('STORNIERUNG')) { currentType = 'STORNO'; continue; }
+        if (!currentType) continue;
+        
+        // The text might be squashed (e.g. "Kresin, Johanna219462. EZ...") or spaced.
+        const resMatch = line.match(/^(?:\d{2}\.\d{2}\.\d{4}\s*)?([^\d]+)(\d{4,5})/);
+        const dateMatch = line.match(/(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/);
+        
+        if (resMatch && dateMatch) {
+            const guestName = resMatch[1].trim();
+            const parts = guestName.split(',').map(s => s.trim());
+            let nameQuery = guestName;
+            if (parts.length === 2) nameQuery = parts[0]; 
+            
+            const invoices = await prisma.invoice.findMany({
+                where: {
+                    OR: [
+                        { recipient: { contains: nameQuery, mode: 'insensitive' } },
+                        { roomReservations: { some: { guestName: { contains: nameQuery, mode: 'insensitive' } } } }
+                    ]
+                }
+            });
+            
+            if (invoices.length > 0) {
+                for (const inv of invoices) {
+                    await prisma.invoice.update({
+                        where: { id: inv.id },
+                        data: { cancellationType: currentType }
+                    });
+                    count++;
+                }
+            }
+        }
+    }
+    
+    return { type: 'STORNO_PDF', count };
+}

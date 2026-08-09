@@ -120,7 +120,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({ onUploadComplete }) => {
 
             <div className="card">
                 <h2>Upload Files</h2>
-                <input type="file" multiple accept=".csv" onChange={handleUpload} disabled={uploading} />
+                <input type="file" multiple accept=".csv, .txt, .pdf" onChange={handleUpload} disabled={uploading} />
                 {toast && <Toast {...toast} onClose={() => setToast(null)} />}
             </div>
         </>

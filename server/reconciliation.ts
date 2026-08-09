@@ -155,6 +155,23 @@ export async function runReconciliation(onProgress?: (progress: number, message:
             if (pmsNum) {
                 match = allInvoices.find(inv => inv.extractedNum === pmsNum && inv.status !== 'CANCELED');
             }
+            
+            if (!match && pms.invoiceNumber.includes('Folio #')) {
+                const folioMatch = pms.invoiceNumber.match(/Folio #(\d+-\d+)/);
+                if (folioMatch) {
+                    const folio = folioMatch[0];
+                    const sibling = await prisma.pmsPayment.findFirst({
+                        where: {
+                            invoiceNumber: { contains: folio },
+                            invoiceId: { not: null },
+                            id: { not: pms.id }
+                        }
+                    });
+                    if (sibling && sibling.invoiceId) {
+                        match = allInvoices.find(inv => inv.id === sibling.invoiceId);
+                    }
+                }
+            }
         }
         if (!match && pms.recipient) {
             const pmsNameClean = cleanName(pms.recipient);
@@ -169,7 +186,11 @@ export async function runReconciliation(onProgress?: (progress: number, message:
                 match = candidates[0];
             } else if (candidates.length > 1) {
                 const exactMatch = candidates.find(inv => Number(inv.amount) === Number(pms.amount));
-                match = exactMatch || candidates[0];
+                if (exactMatch) {
+                    match = exactMatch;
+                } else {
+                    match = null;
+                }
             }
         }
         
@@ -183,6 +204,46 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     
     for (let i = 0; i < pmsUpdates.length; i += 50) {
         await prisma.$transaction(pmsUpdates.slice(i, i + 50));
+    }
+
+    // 2.5. Korrigiere verwaiste Zahlungen auf Storno-Rechnungen
+    notify(30, 'Korrigiere verwaiste Zahlungen auf Stornos... (Schritt 2.5/5)');
+    const stornoPayments = await prisma.pmsPayment.findMany({
+        where: { invoice: { amount: 0, recipient: 'Storno / Canceled' } },
+        include: { invoice: true }
+    });
+    
+    if (stornoPayments.length > 0) {
+        const openInvoices = await prisma.invoice.findMany({
+            where: { status: 'OPEN', amountPaid: 0 }
+        });
+        
+        const stornoUpdates: Prisma.PrismaPromise<any>[] = [];
+        
+        for (const pms of stornoPayments) {
+            if (Number(pms.amount) <= 0) continue; 
+            
+            const pmsNameClean = cleanName(pms.recipient);
+            
+            const candidates = openInvoices.filter(inv => {
+                const amountMatch = Number(inv.amount) === Number(pms.amount);
+                const nameMatch = isNameMatch(cleanName(inv.recipient), pmsNameClean);
+                return amountMatch && nameMatch;
+            });
+            
+            if (candidates.length === 1) {
+                const match = candidates[0];
+                stornoUpdates.push(prisma.pmsPayment.update({
+                    where: { id: pms.id },
+                    data: { invoiceId: match.id, invoiceNumber: match.invoiceNumber }
+                }));
+                console.log(`Auto-fixed storno payment ${pms.id} (${pms.amount} EUR for ${pms.recipient}) -> moved to invoice ${match.invoiceNumber}`);
+            }
+        }
+        
+        for (let i = 0; i < stornoUpdates.length; i += 50) {
+            await prisma.$transaction(stornoUpdates.slice(i, i + 50));
+        }
     }
 
     // 3. Update Invoice amounts and statuses
@@ -201,9 +262,8 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         let status = 'OPEN';
         
         const isAirbnb = inv.roomReservations.some(r => r.isAirbnb);
-        const isBar = inv.paymentType?.toLowerCase().includes('bar');
         
-        if (isAirbnb || isBar) {
+        if (isAirbnb) {
             paid = Number(inv.amount);
             status = 'PAID';
         } else if (paid >= Number(inv.amount) - 0.05) {
@@ -370,15 +430,17 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (inv.isReconciled) continue;
         
         const isAirbnb = inv.roomReservations.some(r => r.isAirbnb);
-        const isBar = inv.paymentType?.toLowerCase().includes('bar');
         
-        if (isAirbnb || isBar || (inv.status === 'PAID' && inv.pmsPayments.length > 0)) {
-            if (isAirbnb || isBar) {
+        if (isAirbnb || (inv.status === 'PAID' && inv.pmsPayments.length > 0)) {
+            if (isAirbnb) {
                 reconcileUpdateIds.push(inv.id);
                 fullyReconciled++;
             } else {
-                const allMatched = inv.pmsPayments.every(p => p.matches.length > 0 || p.paymentType.toLowerCase().includes('bar'));
-                if (allMatched) {
+                const unmatchedSum = inv.pmsPayments
+                    .filter(p => p.matches.length === 0 && !p.paymentType.toLowerCase().includes('bar'))
+                    .reduce((sum, p) => sum + Number(p.amount), 0);
+                    
+                if (unmatchedSum === 0) {
                     reconcileUpdateIds.push(inv.id);
                     fullyReconciled++;
                 }
@@ -413,7 +475,8 @@ function matchBooking(
     for (const payment of getCandidates(index, cents)) {
         if (matchedIds.has(payment.id)) continue;
 
-        const refMatch = pms.recipient?.includes(payment.referenceNumber) || pms.invoice?.comment?.includes(payment.referenceNumber);
+        const refMatch = pms.recipient?.includes(payment.referenceNumber) || 
+                         pms.invoice?.comment?.includes(payment.referenceNumber);
         
         let dateMatch = false;
         if (payment.checkInDate && payment.payoutDate) {
@@ -422,9 +485,13 @@ function matchBooking(
             dateMatch = pmsDay >= -BOOKING_DATE_TOLERANCE && payoutDay <= BOOKING_DATE_TOLERANCE;
         }
 
+        const pmsNameClean = cleanName(pms.recipient);
+        const nameMatch = payment.guestName ? isNameMatch(pmsNameClean, cleanName(payment.guestName)) : false;
+
         let shouldMatch = false;
         if (pass === 1 && refMatch) shouldMatch = true;
-        else if (pass === 2 && dateMatch) shouldMatch = true;
+        else if (pass === 2 && nameMatch) shouldMatch = true;
+        else if (pass === 3 && dateMatch) shouldMatch = true;
 
         if (shouldMatch) {
             matchedIds.add(payment.id);
@@ -551,6 +618,7 @@ function isCardPayment(type: string): boolean {
         t.includes('v pay')        ||
         t.includes('v-pay')        ||
         t.includes('girocard')     ||
+        t.includes('debit')        ||
         t.includes('visa electron')
     );
 }

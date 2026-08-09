@@ -44,6 +44,7 @@ interface Invoice {
     tax19Amount?: number;
     cityTaxAmount?: number;
     netAmount?: number;
+    cancellationType?: string;
 }
 
 
@@ -257,6 +258,8 @@ export const Dashboard: React.FC = () => {
                 if (statusFilter === 'Warning 1' && inv.dunningStatus !== 'Warning 1') return false;
                 if (statusFilter === 'Warning 2' && inv.dunningStatus !== 'Warning 2') return false;
                 if (statusFilter === 'Inkasso' && inv.dunningStatus !== 'Inkasso') return false;
+                if (statusFilter === 'Storno' && inv.cancellationType !== 'STORNO') return false;
+                if (statusFilter === 'No-Show' && inv.cancellationType !== 'NO-SHOW') return false;
             }
 
             // 2. Search Term
@@ -336,12 +339,9 @@ export const Dashboard: React.FC = () => {
         
         if (selectedMonth && groupedInvoices[selectedMonth]) {
             for (const inv of groupedInvoices[selectedMonth]) {
-                let invTax = 0;
-                if (inv.roomReservations) {
-                    for (const res of inv.roomReservations) {
-                        invTax += Number(res.cityTax || 0);
-                    }
-                }
+                if (inv.cancellationType) continue; // Skip Stornos and No-Shows
+
+                let invTax = Number(inv.cityTaxAmount || 0);
                 generated += invTax;
                 
                 if (inv.status === 'PAID' || inv.isReconciled || inv.manualStatus) {
@@ -382,10 +382,7 @@ export const Dashboard: React.FC = () => {
     const getMatchDetails = (inv: Invoice): string => {
         let details = '';
         
-        let totalCityTax = 0;
-        if (inv.roomReservations) {
-            totalCityTax = inv.roomReservations.reduce((sum, r) => sum + (Number(r.cityTax) || 0), 0);
-        }
+        let totalCityTax = Number(inv.cityTaxAmount || 0);
         
         details += `Rechnungsbetrag: ${Number(inv.amount).toFixed(2)} €\n`;
         if (totalCityTax > 0) {
@@ -485,11 +482,13 @@ export const Dashboard: React.FC = () => {
                         <option value="">All</option>
                         <option value="Open">Open</option>
                         <option value="Matched">Matched</option>
-                        <option value="Prüfen">Prüfen</option>
-                        <option value="Reminder">Reminder</option>
-                        <option value="Warning 1">Warning 1</option>
-                        <option value="Warning 2">Warning 2</option>
-                        <option value="Inkasso">Inkasso</option>
+                        <option value="Prüfen">Dunning: Prüfen</option>
+                        <option value="Reminder">Dunning: Reminder</option>
+                        <option value="Warning 1">Dunning: Warning 1</option>
+                        <option value="Warning 2">Dunning: Warning 2</option>
+                        <option value="Inkasso">Dunning: Inkasso</option>
+                        <option value="Storno">Stornos</option>
+                        <option value="No-Show">No-Shows</option>
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
@@ -919,13 +918,36 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                     </span>
                 )}
             </td>
-            <td>{inv.recipient}</td>
+            <td>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <span>{inv.recipient}</span>
+                    {inv.cancellationType && (
+                        <span style={{
+                            display: 'inline-block',
+                            padding: '2px 6px',
+                            backgroundColor: inv.cancellationType === 'STORNO' ? '#fef2f2' : '#fffbeb',
+                            color: inv.cancellationType === 'STORNO' ? '#991b1b' : '#92400e',
+                            border: `1px solid ${inv.cancellationType === 'STORNO' ? '#fecaca' : '#fde68a'}`,
+                            borderRadius: '12px',
+                            fontSize: '0.7rem',
+                            fontWeight: 'bold',
+                            width: 'fit-content'
+                        }}>
+                            {inv.cancellationType}
+                        </span>
+                    )}
+                </div>
+            </td>
             <td>{getPaymentTypes(inv)}</td>
             <td>
                 <div style={{ fontWeight: 'bold' }}>{Number(inv.amount).toFixed(2)} €</div>
                 {inv.cityTaxAmount ? (
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
-                        <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div>
+                        {inv.cancellationType ? (
+                            <div>CityTax: <del>{Number(inv.cityTaxAmount).toFixed(2)} €</del> <strong>0.00 €</strong></div>
+                        ) : (
+                            <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div>
+                        )}
                     </div>
                 ) : null}
                 {inv.status === 'PARTIAL' && (
