@@ -36,9 +36,6 @@ model Invoice {
   dunningMethod     String?  // "Email", "Post"
   dunningDate       DateTime?
 
-  // Cancellation
-  cancellationType  String?  // "STORNO" or "NO-SHOW"
-
   // Relations
   matches           ReconciliationMatch[]
   pmsPayments       PmsPayment[]

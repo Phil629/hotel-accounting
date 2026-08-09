@@ -55,8 +55,8 @@ const upload = multer({
         files: 100,                   // max 10 files per request
     },
     fileFilter: (_req, file, cb) => {
-        if (!file.originalname.match(/\.(csv|txt|pdf)$/i)) {
-            cb(new Error(`Unsupported file type: only .csv, .txt and .pdf are accepted (got: ${file.originalname})`));
+        if (!file.originalname.match(/\.(csv|txt)$/i)) {
+            cb(new Error(`Unsupported file type: only .csv and .txt are accepted (got: ${file.originalname})`));
             return;
         }
         cb(null, true);

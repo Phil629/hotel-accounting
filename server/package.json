@@ -22,7 +22,6 @@
     "express": "^5.1.0",
     "iconv-lite": "^0.7.2",
     "multer": "^2.0.2",
-    "pdf-parse": "^1.1.1",
     "pg": "^8.18.0"
   },
   "devDependencies": {

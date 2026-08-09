@@ -44,7 +44,6 @@ interface Invoice {
     tax19Amount?: number;
     cityTaxAmount?: number;
     netAmount?: number;
-    cancellationType?: string;
 }
 
 
@@ -258,8 +257,6 @@ export const Dashboard: React.FC = () => {
                 if (statusFilter === 'Warning 1' && inv.dunningStatus !== 'Warning 1') return false;
                 if (statusFilter === 'Warning 2' && inv.dunningStatus !== 'Warning 2') return false;
                 if (statusFilter === 'Inkasso' && inv.dunningStatus !== 'Inkasso') return false;
-                if (statusFilter === 'Storno' && inv.cancellationType !== 'STORNO') return false;
-                if (statusFilter === 'No-Show' && inv.cancellationType !== 'NO-SHOW') return false;
             }
 
             // 2. Search Term
@@ -339,8 +336,6 @@ export const Dashboard: React.FC = () => {
         
         if (selectedMonth && groupedInvoices[selectedMonth]) {
             for (const inv of groupedInvoices[selectedMonth]) {
-                if (inv.cancellationType) continue; // Skip Stornos and No-Shows
-
                 let invTax = Number(inv.cityTaxAmount || 0);
                 generated += invTax;
                 
@@ -487,8 +482,6 @@ export const Dashboard: React.FC = () => {
                         <option value="Warning 1">Dunning: Warning 1</option>
                         <option value="Warning 2">Dunning: Warning 2</option>
                         <option value="Inkasso">Dunning: Inkasso</option>
-                        <option value="Storno">Stornos</option>
-                        <option value="No-Show">No-Shows</option>
                     </select>
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
@@ -921,21 +914,6 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             <td>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                     <span>{inv.recipient}</span>
-                    {inv.cancellationType && (
-                        <span style={{
-                            display: 'inline-block',
-                            padding: '2px 6px',
-                            backgroundColor: inv.cancellationType === 'STORNO' ? '#fef2f2' : '#fffbeb',
-                            color: inv.cancellationType === 'STORNO' ? '#991b1b' : '#92400e',
-                            border: `1px solid ${inv.cancellationType === 'STORNO' ? '#fecaca' : '#fde68a'}`,
-                            borderRadius: '12px',
-                            fontSize: '0.7rem',
-                            fontWeight: 'bold',
-                            width: 'fit-content'
-                        }}>
-                            {inv.cancellationType}
-                        </span>
-                    )}
                 </div>
             </td>
             <td>{getPaymentTypes(inv)}</td>
@@ -943,11 +921,7 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                 <div style={{ fontWeight: 'bold' }}>{Number(inv.amount).toFixed(2)} €</div>
                 {inv.cityTaxAmount ? (
                     <div style={{ fontSize: '0.75rem', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
-                        {inv.cancellationType ? (
-                            <div>CityTax: <del>{Number(inv.cityTaxAmount).toFixed(2)} €</del> <strong>0.00 €</strong></div>
-                        ) : (
-                            <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div>
-                        )}
+                        <div>CityTax: {Number(inv.cityTaxAmount).toFixed(2)} €</div>
                     </div>
                 ) : null}
                 {inv.status === 'PARTIAL' && (

@@ -195,11 +195,6 @@ async function executeBatched(ops: Prisma.PrismaPromise<unknown>[]): Promise<voi
 // ─── Entry Point ─────────────────────────────────────────────────────────────
 
 export async function processFile(filePath: string): Promise<ParsedData> {
-    if (filePath.toLowerCase().endsWith('.pdf')) {
-        console.log(`Processing PDF: ${path.basename(filePath)}`);
-        return parseStornoPDF(filePath);
-    }
-
     const { encoding, delimiter, header } = await readFileMetadata(filePath);
 
     console.log(`Processing: ${path.basename(filePath)} [encoding: ${encoding}, delimiter: '${delimiter}']`);
@@ -767,82 +762,4 @@ async function parseRechnungskorrekturen(filePath: string, encoding: string, del
     };
 }
 
-async function parseStornoPDF(filePath: string): Promise<ParsedData> {
-    const pdfParse = require('pdf-parse');
-    const data = await pdfParse(fs.readFileSync(filePath));
-    const lines = data.text.split('\n');
-    let count = 0;
-    
-    let currentType: string | null = null;
-    
-    interface ParsedLine {
-        nameQuery: string;
-        type: string;
-        startDate: Date;
-    }
-    const parsedLines: ParsedLine[] = [];
-    
-    for (const line of lines) {
-        if (line.includes('NO-SHOWS')) { currentType = 'NO-SHOW'; continue; }
-        if (line.includes('STORNIERUNG')) { currentType = 'STORNO'; continue; }
-        if (!currentType) continue;
-        
-        // The text might be squashed (e.g. "Kresin, Johanna219462. EZ...") or spaced.
-        const resMatch = line.match(/^(?:\d{2}\.\d{2}\.\d{4}\s*)?([^\d]+)(\d{4,5})/);
-        const dateMatch = line.match(/(\d{2}\.\d{2}\.\d{4})\s*-\s*(\d{2}\.\d{2}\.\d{4})/);
-        
-        if (resMatch && dateMatch) {
-            const guestName = resMatch[1].trim();
-            const parts = guestName.split(',').map(s => s.trim());
-            let nameQuery = guestName;
-            if (parts.length === 2) nameQuery = parts[0]; 
-            
-            const startDate = parseDate(dateMatch[1]);
-            if (startDate) {
-                parsedLines.push({ nameQuery: nameQuery.toLowerCase(), type: currentType, startDate });
-            }
-        }
-    }
-    
-    if (parsedLines.length > 0) {
-        // Find date range
-        const dates = parsedLines.map(p => p.startDate.getTime());
-        const minDate = new Date(Math.min(...dates) - 30 * 24 * 60 * 60 * 1000); // 30 days before
-        const maxDate = new Date(Math.max(...dates) + 30 * 24 * 60 * 60 * 1000); // 30 days after
-        
-        // Fetch all invoices in this range once
-        const invoices = await prisma.invoice.findMany({
-            where: {
-                invoiceDate: { gte: minDate, lte: maxDate }
-            },
-            include: { roomReservations: true }
-        });
-        
-        const invoicesToUpdate = new Map<number, string>(); // invoiceId -> cancellationType
-        
-        for (const pLine of parsedLines) {
-            const matches = invoices.filter(inv => {
-                // The room reservation must match the guest name AND the checkIn date must match exactly
-                return inv.roomReservations.some(rr => 
-                    (rr.guestName && rr.guestName.toLowerCase().includes(pLine.nameQuery)) &&
-                    (rr.checkIn.getTime() === pLine.startDate.getTime())
-                );
-            });
-            
-            for (const match of matches) {
-                invoicesToUpdate.set(match.id, pLine.type);
-            }
-        }
-        
-        // Update all matched invoices
-        for (const [invId, type] of invoicesToUpdate.entries()) {
-            await prisma.invoice.update({
-                where: { id: invId },
-                data: { cancellationType: type }
-            });
-            count++;
-        }
-    }
-    
-    return { type: 'STORNO_PDF', count };
-}
+
