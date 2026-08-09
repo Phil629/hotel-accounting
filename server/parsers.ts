@@ -821,10 +821,13 @@ async function parseStornoPDF(filePath: string): Promise<ParsedData> {
         const invoicesToUpdate = new Map<number, string>(); // invoiceId -> cancellationType
         
         for (const pLine of parsedLines) {
-            const matches = invoices.filter(inv => 
-                (inv.recipient && inv.recipient.toLowerCase().includes(pLine.nameQuery)) ||
-                inv.roomReservations.some(rr => rr.guestName && rr.guestName.toLowerCase().includes(pLine.nameQuery))
-            );
+            const matches = invoices.filter(inv => {
+                // The room reservation must match the guest name AND the checkIn date must match exactly
+                return inv.roomReservations.some(rr => 
+                    (rr.guestName && rr.guestName.toLowerCase().includes(pLine.nameQuery)) &&
+                    (rr.checkIn.getTime() === pLine.startDate.getTime())
+                );
+            });
             
             for (const match of matches) {
                 invoicesToUpdate.set(match.id, pLine.type);
