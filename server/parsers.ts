@@ -8,8 +8,8 @@ import prisma from './db';
 
 const BATCH_SIZE = 500;
 
-interface ParsedData {
-    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'RECHNUNGSKORREKTUR' | 'STORNO_PDF' | 'UNKNOWN';
+export interface ParsedData {
+    type: 'BOOKING' | 'RECHNUNGSBERICHT' | 'ZAHLUNGSBERICHT' | 'ZIMMERUEBERSICHT' | 'BANK' | 'NEXI' | 'PAYPAL' | 'RECHNUNGSKORREKTUR' | 'STORNO_PDF' | 'UNKNOWN';
     count: number;
     dateRangeStart?: Date;
     dateRangeEnd?: Date;
@@ -246,6 +246,14 @@ export async function processFile(filePath: string): Promise<ParsedData> {
 
     if (headerLower.includes('date') && headerLower.includes('amount')) {
         return parseNexi(filePath, encoding, delimiter);
+    }
+
+    if (
+        (headerLower.includes('datum') || headerLower.includes('date')) &&
+        (headerLower.includes('brutto') || headerLower.includes('gross')) &&
+        (headerLower.includes('netto') || headerLower.includes('net'))
+    ) {
+        return parsePayPal(filePath, encoding, delimiter);
     }
 
     console.log('Unknown file header — no parser matched.');
@@ -692,6 +700,81 @@ async function parseNexi(filePath: string, encoding: string, delimiter: string):
 
     await flushBatch();
     return { type: 'NEXI', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
+}
+
+
+
+async function parsePayPal(filePath: string, encoding: string, delimiter: string): Promise<ParsedData> {
+    const stream = buildCsvStream(filePath, encoding, delimiter);
+
+    let headerMapped = false;
+    let colMap = { date: -1, name: -1, grossAmount: -1, type: -1 };
+    let count = 0;
+    let minDate: Date | null = null;
+    let maxDate: Date | null = null;
+    let batch: Prisma.CardPaymentCreateManyInput[] = [];
+
+    async function flushBatch() {
+        if (batch.length === 0) return;
+        await prisma.cardPayment.createMany({ data: batch, skipDuplicates: true });
+        batch = [];
+    }
+
+    for await (const row of stream) {
+        if (!headerMapped) {
+            const h = row.map(c => c.toLowerCase().trim());
+            colMap = {
+                date:        h.findIndex(c => c === 'datum' || c === 'date'),
+                name:        h.findIndex(c => c === 'name'),
+                grossAmount: h.findIndex(c => c === 'brutto' || c === 'gross'),
+                type:        h.findIndex(c => c === 'typ' || c === 'type'),
+            };
+            if (colMap.date === -1 || colMap.grossAmount === -1) {
+                console.warn('PayPal: critical columns not found in header', h);
+            }
+            headerMapped = true;
+            continue;
+        }
+
+        if (row.length < 3) continue;
+
+        try {
+            const dateStr = colMap.date > -1 ? row[colMap.date] : null;
+            const date    = dateStr ? parseDate(dateStr) : null;
+            let amount    = colMap.grossAmount > -1 ? parseAmount(row[colMap.grossAmount]) : 0;
+            const typeStr = colMap.type > -1 ? row[colMap.type]?.trim() : '';
+            const nameStr = colMap.name > -1 ? row[colMap.name]?.trim() : '';
+            
+            if (!date) { continue; }
+            if (amount === 0) { continue; }
+            
+            const externalHash = buildHash(row.join('|'));
+            let description = nameStr;
+            if (typeStr) {
+                description = nameStr ? `${nameStr} (${typeStr})` : typeStr;
+            }
+
+            batch.push({ 
+                externalHash, 
+                transactionDate: date, 
+                cardType: 'PayPal', 
+                amount: amount, 
+                grossAmount: null 
+            });
+            count++;
+            
+            const [min, max] = updateDateRange(date, minDate, maxDate);
+            minDate = min;
+            maxDate = max;
+
+            if (batch.length >= BATCH_SIZE) await flushBatch();
+        } catch (e) {
+            console.error('PayPal row error', row, e);
+        }
+    }
+
+    await flushBatch();
+    return { type: 'PAYPAL', count, dateRangeStart: minDate ?? undefined, dateRangeEnd: maxDate ?? undefined };
 }
 
 
