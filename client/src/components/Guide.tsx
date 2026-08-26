@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 
 export const Guide: React.FC = () => {
-    const [activeTab, setActiveTab] = useState<'booking' | 'nexi' | 'ibelsa'>('booking');
+    const [activeTab, setActiveTab] = useState<'booking' | 'nexi' | 'ibelsa' | 'paypal'>('booking');
 
     const tabs = [
         { id: 'booking', label: 'Booking.com', icon: '📊', color: 'blue' },
         { id: 'nexi', label: 'Nexi', icon: '💳', color: 'purple' },
-        { id: 'ibelsa', label: 'Ibelsa', icon: '🏨', color: 'green' }
+        { id: 'ibelsa', label: 'Ibelsa', icon: '🏨', color: 'green' },
+        { id: 'paypal', label: 'PayPal', icon: '🅿️', color: 'blue' }
     ] as const;
 
     return (
@@ -182,6 +183,48 @@ export const Guide: React.FC = () => {
                                 </div>
                             }
                             imageSrc="/guide/ibelsa_rechnungskorrekturen.png"
+                        />
+                    </div>
+                )}
+
+                {/* PayPal Content */}
+                {activeTab === 'paypal' && (
+                    <div className="divide-y divide-gray-100">
+                        <Step
+                            number={1}
+                            title="Zu den Transaktionen navigieren"
+                            description={
+                                <span>
+                                    Loggen Sie sich im PayPal-Geschäftskonto ein. Klicken Sie im linken Menü auf <strong className="text-blue-600">Aktivitäten</strong> und wählen Sie dann <strong className="text-blue-600">Alle Transaktionen</strong>.
+                                </span>
+                            }
+                            imageSrc="/guide/paypal_step1.png"
+                        />
+                        <Step
+                            number={2}
+                            title="Export-Menü öffnen"
+                            description={
+                                <span>
+                                    Klicken Sie oben rechts in der Übersicht auf das kleine <strong>Download-Symbol</strong> (Pfeil nach unten), um zu den Berichten zu gelangen.
+                                </span>
+                            }
+                            imageSrc="/guide/paypal_step2.png"
+                        />
+                        <Step
+                            number={3}
+                            title="Bericht erstellen und herunterladen"
+                            description={
+                                <div>
+                                    <p className="mb-2">Auf der Seite <strong className="text-blue-600">Aktivitätsbericht</strong>:</p>
+                                    <ul className="list-disc list-inside text-gray-600 space-y-1 ml-1 mb-3">
+                                        <li>Transaktionstyp: <strong>Alle Transaktionen</strong></li>
+                                        <li>Datumsbereich: Gewünschten Monat wählen</li>
+                                        <li>Format: <strong>CSV</strong></li>
+                                    </ul>
+                                    <p>Klicken Sie auf <strong>Bericht erstellen</strong> und laden Sie die Datei herunter, sobald PayPal sie fertiggestellt hat.</p>
+                                </div>
+                            }
+                            imageSrc="/guide/paypal_step3.png"
                         />
                     </div>
                 )}
