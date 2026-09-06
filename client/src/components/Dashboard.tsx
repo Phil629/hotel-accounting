@@ -947,9 +947,19 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                         {(() => {
                             const total = Number(inv.amount);
                             const paid = Number(inv.amountPaid || 0);
-                            const open = Math.max(0, total - paid);
                             const diff = Math.round((total - paid) * 100) / 100;
                             const fullyPaidByPMS = diff <= 0.005 && paid > 0;
+
+                            // Calculate how much is already covered by external bank matches
+                            const externallyMatched = (inv.matches || []).reduce((sum, m) => {
+                                if (m.matchType === 'SUGGESTED_MISMATCH') return sum;
+                                if (m.bookingPayment) return sum + Number(m.bookingPayment.amount);
+                                if (m.cardPayment) return sum + Number(m.cardPayment.amount);
+                                if (m.bankTransaction) return sum + Number(m.bankTransaction.amount);
+                                return sum;
+                            }, 0);
+                            const bankOpen = Math.max(0, Math.round((total - externallyMatched) * 100) / 100);
+
                             return (
                                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', paddingTop: '6px', marginTop: '4px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: paid > 0 ? '#86efac' : 'inherit' }}>
@@ -958,8 +968,8 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                     </div>
                                     {diff > 0.005 && (
                                         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#fca5a5', fontWeight: 'bold', marginTop: '2px' }}>
-                                            <span>⚠ Noch offen</span>
-                                            <span>{open.toFixed(2)} €</span>
+                                            <span>⚠ Noch offen (PMS)</span>
+                                            <span>{Math.max(0, total - paid).toFixed(2)} €</span>
                                         </div>
                                     )}
                                     {fullyPaidByPMS && optimisticIsReconciled && (
@@ -967,9 +977,16 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                             ✓ Vollständig abgeglichen
                                         </div>
                                     )}
-                                    {fullyPaidByPMS && !optimisticIsReconciled && (
-                                        <div style={{ fontSize: '0.82rem', color: '#fcd34d', marginTop: '2px', textAlign: 'center' }}>
-                                            ⚠ Betrag OK — Bankabgleich fehlt noch
+                                    {fullyPaidByPMS && !optimisticIsReconciled && bankOpen > 0.005 && (
+                                        <div style={{ marginTop: '4px' }}>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#fcd34d' }}>
+                                                <span>Bank abgeglichen</span>
+                                                <span>{externallyMatched.toFixed(2)} €</span>
+                                            </div>
+                                            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#fb923c', fontWeight: 'bold', marginTop: '2px' }}>
+                                                <span>⚠ Bankabgleich fehlt</span>
+                                                <span>{bankOpen.toFixed(2)} €</span>
+                                            </div>
                                         </div>
                                     )}
                                 </div>
