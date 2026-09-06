@@ -477,12 +477,16 @@ async function parseZahlungsbericht(filePath: string, encoding: string, delimite
                 }
             }
 
+            const rawStr = `${date.toISOString()}|${type}|${number}|${recipient}|${amount}`;
+            const externalHash = crypto.createHash('sha256').update(rawStr).digest('hex');
+
             batch.push({
                 paymentDate:    date,
                 paymentType:    type,
                 invoiceNumber:  number,
                 recipient,
-                amount
+                amount,
+                externalHash
             });
             count++;
             [minDate, maxDate] = updateDateRange(date, minDate, maxDate);
@@ -558,6 +562,9 @@ async function parseZimmeruebersicht(filePath: string, encoding: string, delimit
                 cityTax = taxPerNight * nights * pax;
             }
 
+            const rawStr = `${category}|${roomName}|${checkIn.toISOString()}|${checkOut.toISOString()}|${nights}|${guestName}|${pax}|${price}`;
+            const externalHash = crypto.createHash('sha256').update(rawStr).digest('hex');
+
             batch.push({
                 category,
                 roomName,
@@ -568,7 +575,8 @@ async function parseZimmeruebersicht(filePath: string, encoding: string, delimit
                 pax,
                 price,
                 cityTax,
-                isAirbnb
+                isAirbnb,
+                externalHash
             });
             count++;
             [minDate, maxDate] = updateDateRange(checkIn, minDate, maxDate);

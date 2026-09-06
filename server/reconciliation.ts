@@ -272,7 +272,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (isAirbnb) {
             paid = Number(inv.amount);
             status = 'PAID';
-        } else if (paid >= Number(inv.amount) - 0.05) {
+        } else if (Math.round(paid * 100) >= Math.round(Number(inv.amount) * 100)) {
             status = 'PAID';
         } else if (paid > 0) {
             status = 'PARTIAL';
