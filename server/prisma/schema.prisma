@@ -130,9 +130,6 @@ model ReconciliationMatch {
 
   createdAt DateTime @default(now())
 
-  @@unique([bankTransactionId])
-  @@unique([bookingPaymentId])
-  @@unique([cardPaymentId])
   @@index([invoiceId])
   @@index([bankTransactionId])
   @@index([bookingPaymentId])
