@@ -374,48 +374,6 @@ export const Dashboard: React.FC = () => {
     // Memoize the sorted list used for the "Search Results" view
     const sortedFilteredInvoices = useMemo(() => sortInvoices(filteredInvoices), [filteredInvoices, sortInvoices]);
 
-    const getMatchDetails = (inv: Invoice): string => {
-        let details = '';
-        
-        let totalCityTax = Number(inv.cityTaxAmount || 0);
-        
-        details += `Rechnungsbetrag: ${Number(inv.amount).toFixed(2)} €\n`;
-        if (totalCityTax > 0) {
-            details += `Davon Citytax: ${totalCityTax.toFixed(2)} €\n`;
-        }
-        
-        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
-            details += `\nZahlung (Hotelsoftware):\n`;
-            inv.pmsPayments.forEach(p => {
-                details += `- ${p.paymentType}: ${Number(p.amount).toFixed(2)} €\n`;
-            });
-        }
-        
-        if (inv.matches && inv.matches.length > 0) {
-            details += `\nBank-Abgleich:\n`;
-            inv.matches.forEach(match => {
-                const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
-                const prefix = isSuggestion ? 'Vorschlag: ' : '';
-        
-                if (match.bookingPayment) {
-                    details += `- ${prefix}Booking.com: ${Number(match.bookingPayment.amount).toFixed(2)} €\n`;
-                }
-                if (match.cardPayment) {
-                    details += `- ${prefix}Card (${match.cardPayment.cardType}): ${Number(match.cardPayment.amount).toFixed(2)} €\n`;
-                }
-                if (match.bankTransaction) {
-                    details += `- ${prefix}Bank: ${Number(match.bankTransaction.amount).toFixed(2)} €\n`;
-                }
-            });
-        }
-
-        if (!inv.pmsPayments?.length && (!inv.matches || inv.matches.length === 0)) {
-            details += `\n(Keine Zahlungsdetails gefunden)`;
-        }
-
-        return details.trim();
-    };
-
 
 
     const SortIcon: React.FC<{ field: SortField }> = ({ field }) => {
@@ -634,7 +592,7 @@ export const Dashboard: React.FC = () => {
                                         onToggleManual={toggleManual}
                                         onCommentChange={handleCommentChange}
                                         onDunningUpdate={handleDunningUpdate}
-                                        getMatchDetails={getMatchDetails}
+                                        
                                     />
                                 ))}
                             </tbody>
@@ -717,7 +675,7 @@ export const Dashboard: React.FC = () => {
                                             onToggleManual={toggleManual}
                                             onCommentChange={handleCommentChange}
                                             onDunningUpdate={handleDunningUpdate}
-                                            getMatchDetails={getMatchDetails}
+                                            
                                         />
                                     ))}
                                 </tbody>
@@ -824,10 +782,9 @@ interface InvoiceRowProps {
     onToggleManual: (id: number, currentStatus: boolean) => void;
     onCommentChange: (id: number, comment: string) => void;
     onDunningUpdate: (id: number, status: string, method: string, date: string) => void;
-    getMatchDetails: (inv: Invoice) => string;
 }
 
-const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual, onCommentChange, onDunningUpdate, getMatchDetails }) => {
+const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual, onCommentChange, onDunningUpdate }) => {
     // Optimistic UI State
     const [optimisticManualStatus, setOptimisticManualStatus] = useState(inv.manualStatus);
     const [optimisticIsReconciled, setOptimisticIsReconciled] = useState(inv.isReconciled);
@@ -935,8 +892,83 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                     <span className={`status-badge ${optimisticIsReconciled ? 'status-matched' : optimisticManualStatus ? 'status-manual' : inv.status === 'PARTIAL' ? 'status-partial' : hasMismatchSuggestion ? 'status-suggested' : 'status-open'}`}>
                         {optimisticIsReconciled ? (inv.matches && inv.matches.length > 0 ? 'Matched' : 'Manual') : inv.status === 'PARTIAL' ? 'Teilweise' : hasMismatchSuggestion ? 'Zahlungsart?' : 'Open'}
                     </span>
-                    <div className="tooltip">
-                        {getMatchDetails(inv)}
+                    <div className="tooltip tooltip-rich">
+                        {/* Header: Invoice total */}
+                        <div style={{ borderBottom: '1px solid rgba(255,255,255,0.2)', paddingBottom: '6px', marginBottom: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                                <span>Rechnungsbetrag</span>
+                                <span>{Number(inv.amount).toFixed(2)} €</span>
+                            </div>
+                            {inv.cityTaxAmount && Number(inv.cityTaxAmount) > 0 && (
+                                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', opacity: 0.75, marginTop: '2px' }}>
+                                    <span>↳ davon Citytax</span>
+                                    <span>{Number(inv.cityTaxAmount).toFixed(2)} €</span>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* PMS Payments */}
+                        {inv.pmsPayments && inv.pmsPayments.length > 0 && (
+                            <div style={{ marginBottom: '6px' }}>
+                                <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.6, marginBottom: '3px' }}>Zahlung (Hotelsoftware)</div>
+                                {inv.pmsPayments.map((p, i) => (
+                                    <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '2px' }}>
+                                        <span>• {p.paymentType}</span>
+                                        <span>{Number(p.amount).toFixed(2)} €</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
+                        {/* External Matches */}
+                        {inv.matches && inv.matches.length > 0 && (
+                            <div style={{ borderTop: '1px solid rgba(255,255,255,0.15)', paddingTop: '6px', marginTop: '4px', marginBottom: '6px' }}>
+                                <div style={{ fontSize: '0.72rem', textTransform: 'uppercase', letterSpacing: '0.05em', opacity: 0.6, marginBottom: '3px' }}>Bank-Abgleich</div>
+                                {inv.matches.map((match, i) => {
+                                    const isSuggestion = match.matchType === 'SUGGESTED_MISMATCH';
+                                    const color = isSuggestion ? '#fde68a' : '#86efac';
+                                    let label = '';
+                                    let amount = 0;
+                                    if (match.bookingPayment) { label = 'Booking.com'; amount = Number(match.bookingPayment.amount); }
+                                    else if (match.cardPayment) { label = `Card (${match.cardPayment.cardType})`; amount = Number(match.cardPayment.amount); }
+                                    else if (match.bankTransaction) { label = 'Banküberweisung'; amount = Number(match.bankTransaction.amount); }
+                                    if (!label) return null;
+                                    return (
+                                        <div key={i} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginTop: '2px', color }}>
+                                            <span>{isSuggestion ? '⚠ ' : '✓ '}{label}</span>
+                                            <span>{amount.toFixed(2)} €</span>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+
+                        {/* Summary: Paid vs Open */}
+                        {(() => {
+                            const total = Number(inv.amount);
+                            const paid = Number(inv.amountPaid || 0);
+                            const open = Math.max(0, total - paid);
+                            const diff = Math.round((total - paid) * 100) / 100;
+                            return (
+                                <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', paddingTop: '6px', marginTop: '4px' }}>
+                                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: paid > 0 ? '#86efac' : 'inherit' }}>
+                                        <span>Bezahlt</span>
+                                        <span>{paid.toFixed(2)} €</span>
+                                    </div>
+                                    {diff > 0.005 && (
+                                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: '#fca5a5', fontWeight: 'bold', marginTop: '2px' }}>
+                                            <span>⚠ Noch offen</span>
+                                            <span>{open.toFixed(2)} €</span>
+                                        </div>
+                                    )}
+                                    {diff <= 0.005 && paid > 0 && (
+                                        <div style={{ fontSize: '0.82rem', color: '#86efac', marginTop: '2px', textAlign: 'center' }}>
+                                            ✓ Vollständig bezahlt
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
                     </div>
                 </div>
             </td>

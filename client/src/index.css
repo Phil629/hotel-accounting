@@ -154,22 +154,26 @@ td {
 .tooltip {
   visibility: hidden;
   width: 320px;
-  background-color: #333;
+  background-color: #1f2937;
   color: #fff;
   text-align: left;
-  border-radius: 6px;
-  padding: 10px;
+  border-radius: 8px;
+  padding: 12px 14px;
   position: absolute;
   z-index: 100;
   bottom: 125%;
-  white-space: pre-wrap;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
   left: 50%;
-  margin-left: -125px;
+  margin-left: -160px;
   opacity: 0;
-  transition: opacity 0.3s;
-  font-size: 0.75rem;
+  transition: opacity 0.2s;
+  font-size: 0.82rem;
   pointer-events: none;
+  line-height: 1.5;
+}
+
+.tooltip.tooltip-rich {
+  white-space: normal;
 }
 
 .tooltip::after {
@@ -180,7 +184,7 @@ td {
   margin-left: -5px;
   border-width: 5px;
   border-style: solid;
-  border-color: #333 transparent transparent transparent;
+  border-color: #1f2937 transparent transparent transparent;
 }
 
 .tooltip-container:hover .tooltip {
