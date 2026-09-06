@@ -123,7 +123,10 @@ export async function runReconciliation(onProgress?: (progress: number, message:
 
     const roomUpdates: Prisma.PrismaPromise<any>[] = [];
     
+    let roomIndex = 0;
     for (const room of unlinkedRooms) {
+        roomIndex++;
+        if (roomIndex % 100 === 0) notify(10, `Lese Rechnungen und Zimmer... (${roomIndex}/${unlinkedRooms.length})`);
         const roomNameClean = cleanName(room.guestName);
         const match = allInvoices.find(inv => {
             const nameMatch = isNameMatch(inv.cleanName, roomNameClean);
@@ -148,7 +151,10 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     const unlinkedPms = await prisma.pmsPayment.findMany({ where: { invoiceId: null } });
     const pmsUpdates: Prisma.PrismaPromise<any>[] = [];
     
+    let pmsIndex = 0;
     for (const pms of unlinkedPms) {
+        pmsIndex++;
+        if (pmsIndex % 100 === 0) notify(20, `Verknüpfe Zahlungsberichte mit Rechnungen... (${pmsIndex}/${unlinkedPms.length}) (Schritt 2/5)`);
         let match = null;
         if (pms.invoiceNumber) {
             const pmsNum = extractInvoiceNumber(pms.invoiceNumber);
@@ -328,7 +334,10 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (pass === 3) notify(80, 'Suche ungefähre Matches (Erweiterter Namensabgleich)...');
         if (pass === 4) notify(90, 'Suche Mismatch-Vorschläge...');
 
+        let matchIndex = 0;
         for (const pms of pmsPaymentsToMatch) {
+            matchIndex++;
+            if (matchIndex % 50 === 0) notify(pass === 1 ? 60 : pass === 2 ? 70 : pass === 3 ? 80 : 90, `Suche Matches Durchlauf ${pass} (${matchIndex}/${pmsPaymentsToMatch.length})...`);
             if (matchedPmsIds.has(pms.id)) continue;
             
             if (pms.paymentType.toLowerCase().includes('bar')) {
