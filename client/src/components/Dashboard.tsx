@@ -949,10 +949,11 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                             const paid = Number(inv.amountPaid || 0);
                             const open = Math.max(0, total - paid);
                             const diff = Math.round((total - paid) * 100) / 100;
+                            const fullyPaidByPMS = diff <= 0.005 && paid > 0;
                             return (
                                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.25)', paddingTop: '6px', marginTop: '4px' }}>
                                     <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', color: paid > 0 ? '#86efac' : 'inherit' }}>
-                                        <span>Bezahlt</span>
+                                        <span>Bezahlt (PMS)</span>
                                         <span>{paid.toFixed(2)} €</span>
                                     </div>
                                     {diff > 0.005 && (
@@ -961,9 +962,14 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                             <span>{open.toFixed(2)} €</span>
                                         </div>
                                     )}
-                                    {diff <= 0.005 && paid > 0 && (
+                                    {fullyPaidByPMS && optimisticIsReconciled && (
                                         <div style={{ fontSize: '0.82rem', color: '#86efac', marginTop: '2px', textAlign: 'center' }}>
-                                            ✓ Vollständig bezahlt
+                                            ✓ Vollständig abgeglichen
+                                        </div>
+                                    )}
+                                    {fullyPaidByPMS && !optimisticIsReconciled && (
+                                        <div style={{ fontSize: '0.82rem', color: '#fcd34d', marginTop: '2px', textAlign: 'center' }}>
+                                            ⚠ Betrag OK — Bankabgleich fehlt noch
                                         </div>
                                     )}
                                 </div>
