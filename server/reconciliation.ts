@@ -523,6 +523,7 @@ function getCardGroup(name: string): number {
     if (n.includes('visa') || n.includes('v pay') || n.includes('v-pay') || n.includes('vpay')) return 2;
     if (n.includes('ec-karte') || n.includes('girocard') || n.includes('maestro') || n.includes('debit')) return 3;
     if (n.includes('american express') || n.includes('amex')) return 4;
+    if (n.includes('paypal')) return 5;
     return 0;
 }
 
@@ -628,6 +629,7 @@ function isCardPayment(type: string): boolean {
         t.includes('v-pay')        ||
         t.includes('girocard')     ||
         t.includes('debit')        ||
-        t.includes('visa electron')
+        t.includes('visa electron') ||
+        t.includes('paypal')
     );
 }
