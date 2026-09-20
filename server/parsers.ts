@@ -477,6 +477,14 @@ async function parseZahlungsbericht(filePath: string, encoding: string, delimite
                 }
             }
 
+            // Handle "Folio #22736-1" or "Folio #22736" format from Ibelsa
+            if (number.includes('Folio')) {
+                const match = number.match(/Folio\s*#?(\d+)/i);
+                if (match) {
+                    number = match[1];
+                }
+            }
+
             const rawStr = `${date.toISOString()}|${type}|${number}|${recipient}|${amount}`;
             const externalHash = crypto.createHash('sha256').update(rawStr).digest('hex');
 
