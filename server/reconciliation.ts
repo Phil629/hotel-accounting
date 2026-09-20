@@ -420,6 +420,117 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
 
+    // 4.6 Direkter Bankabgleich für offene Rechnungen (z.B. Firmen / Rechnungszahler)
+    notify(92, 'Prüfe direkte Banküberweisungen für offene Rechnungen...');
+    const openInvoicesForDirectMatch = await prisma.invoice.findMany({
+        where: {
+            isReconciled: false,
+            manualStatus: false,
+            invoiceDate: { gte: nineMonthsAgo }
+        },
+        include: { roomReservations: true, pmsPayments: true }
+    });
+
+    const directInvoiceUpdates: { id: number; amountPaid: number }[] = [];
+
+    for (const inv of openInvoicesForDirectMatch) {
+        const invNum = inv.invoiceNumber;
+        const totalCents = toCents(inv.amount);
+        const paidCents = toCents(inv.amountPaid || 0);
+        const remainingCents = totalCents - paidCents;
+        const targetCents = remainingCents > 0 ? remainingCents : totalCents;
+        if (targetCents <= 0) continue;
+
+        const candidate = availableBanks.find(b => {
+            if (matchedBankIds.has(b.id)) return false;
+            const bCents = toCents(b.amount);
+            if (bCents !== targetCents && bCents !== totalCents) return false;
+
+            const diff = Math.abs(differenceInDays(inv.invoiceDate, b.bookingDate));
+            if (diff > BANK_DATE_TOLERANCE_DAYS) return false;
+
+            const desc = b.description || '';
+            const sender = b.senderReceiver || '';
+
+            // Ignore acquirer payouts (Payone, Nexi, PayPal, Stripe, etc.) for direct bank match
+            const senderLower = sender.toLowerCase();
+            if (senderLower.includes('payone') || senderLower.includes('nexi') || senderLower.includes('stripe') || senderLower.includes('paypal')) {
+                return false;
+            }
+
+            // Condition 1: Invoice number in description
+            if (invNum && (new RegExp(`\\b${invNum}\\b`).test(desc) || desc.includes(invNum))) {
+                return true;
+            }
+
+            // Condition 2: Corporate name match if paymentType is bank transfer
+            const isBankType = inv.paymentType.toLowerCase().includes('bank') || inv.paymentType.toLowerCase().includes('überweisung');
+            if (isBankType && isNameMatch(cleanName(inv.recipient), cleanName(sender))) {
+                return true;
+            }
+
+            return false;
+        });
+
+        if (candidate) {
+            matchedBankIds.add(candidate.id);
+            matchesToCreate.push({
+                invoiceId: inv.id,
+                bankTransactionId: candidate.id,
+                matchType: 'AUTOMATIC',
+                confidence: 0.95
+            });
+            directInvoiceUpdates.push({
+                id: inv.id,
+                amountPaid: Number(inv.amount)
+            });
+        }
+    }
+
+    // 4.7 Booking.com Restbetrag-Abgleich (z.B. Citytax vor Ort gebucht, Übernachtung via Booking Extranet)
+    notify(94, 'Prüfe Booking.com Restbetrag-Auszahlungen...');
+    for (const inv of openInvoicesForDirectMatch) {
+        if (directInvoiceUpdates.some(u => u.id === inv.id)) continue;
+
+        const isBooking = inv.paymentType.toLowerCase().includes('booking') || 
+                          inv.roomReservations.some(r => r.category.toLowerCase().includes('booking'));
+        if (!isBooking) continue;
+
+        const totalCents = toCents(inv.amount);
+        const paidCents = toCents(inv.amountPaid || 0);
+        const remainingCents = totalCents - paidCents;
+        const targetCents = remainingCents > 0 ? remainingCents : totalCents;
+        if (targetCents <= 0) continue;
+
+        const candidate = availableBookings.find(b => {
+            if (matchedBookingIds.has(b.id)) return false;
+            const bCents = toCents(b.amount);
+            if (bCents !== targetCents && bCents !== totalCents) return false;
+
+            const bDate = b.checkInDate || b.payoutDate;
+            if (bDate) {
+                const diff = Math.abs(differenceInDays(inv.invoiceDate, bDate));
+                if (diff > 14) return false;
+            }
+
+            return isNameMatch(cleanName(inv.recipient), cleanName(b.guestName));
+        });
+
+        if (candidate) {
+            matchedBookingIds.add(candidate.id);
+            matchesToCreate.push({
+                invoiceId: inv.id,
+                bookingPaymentId: candidate.id,
+                matchType: 'AUTOMATIC',
+                confidence: 0.95
+            });
+            directInvoiceUpdates.push({
+                id: inv.id,
+                amountPaid: Number(inv.amount)
+            });
+        }
+    }
+
     notify(95, `Speichere ${matchesToCreate.length} Matches in der Datenbank... (Schritt 5/5)`);
 
     // Group into batches of 500
@@ -427,8 +538,27 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         await prisma.reconciliationMatch.createMany({ data: matchesToCreate.slice(i, i + 500) });
     }
 
+    // Apply direct invoice updates (set amountPaid to full amount and status to PAID)
+    if (directInvoiceUpdates.length > 0) {
+        for (const update of directInvoiceUpdates) {
+            await prisma.invoice.update({
+                where: { id: update.id },
+                data: {
+                    amountPaid: update.amountPaid,
+                    status: 'PAID',
+                    isReconciled: true,
+                    reconciledDate: new Date()
+                }
+            });
+        }
+    }
+
     const allInvoicesToCheck = await prisma.invoice.findMany({
-        include: { pmsPayments: { include: { matches: true } }, roomReservations: true }
+        include: {
+            pmsPayments: { include: { matches: true } },
+            matches: true,
+            roomReservations: true
+        }
     });
     
     let fullyReconciled = 0;
@@ -436,7 +566,18 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     const now = new Date();
     
     for (const inv of allInvoicesToCheck) {
-        if (inv.isReconciled) continue;
+        if (inv.isReconciled) {
+            fullyReconciled++;
+            continue;
+        }
+
+        // Invoices with direct bank or booking matches
+        const hasDirectMatch = inv.matches && inv.matches.length > 0 && inv.matches.some(m => m.bankTransactionId !== null || m.bookingPaymentId !== null);
+        if (hasDirectMatch) {
+            reconcileUpdateIds.push(inv.id);
+            fullyReconciled++;
+            continue;
+        }
         
         const isAirbnb = inv.roomReservations.some(r => r.isAirbnb);
         
