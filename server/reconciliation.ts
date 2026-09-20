@@ -67,10 +67,10 @@ function extractInvoiceNumber(fullNumber: string | null | undefined): string | n
 function cleanName(name: string | null | undefined): string {
     if (!name) return '';
     return name.toLowerCase()
-        .replace(/ä/g, 'ae')
-        .replace(/ö/g, 'oe')
-        .replace(/ü/g, 'ue')
-        .replace(/ß/g, 'ss')
+        .replace(/ä|ã¤/gi, 'ae')
+        .replace(/ö|ã¶/gi, 'oe')
+        .replace(/ü|ã¼/gi, 'ue')
+        .replace(/ß|ãŸ/gi, 'ss')
         .replace(/[^a-z0-9]/g, ' ') // Replace with space instead of deleting
         .trim()
         .replace(/\s+/g, ' ');      // Collapse multiple spaces
@@ -527,6 +527,46 @@ export async function runReconciliation(onProgress?: (progress: number, message:
             directInvoiceUpdates.push({
                 id: inv.id,
                 amountPaid: Number(inv.amount)
+            });
+        }
+    }
+
+    // 4.8 Booking.com Vorschläge bei identischer Betragshöhe (z.B. wenn Rechnungsadresse auf Firma geändert wurde)
+    notify(94, 'Suche Booking.com Vorschläge bei abweichendem Namen / geänderter Firmenadresse...');
+    for (const inv of openInvoicesForDirectMatch) {
+        if (directInvoiceUpdates.some(u => u.id === inv.id)) continue;
+
+        const isBooking = inv.paymentType.toLowerCase().includes('booking') || 
+                          inv.roomReservations.some(r => r.category.toLowerCase().includes('booking'));
+        if (!isBooking) continue;
+
+        const totalCents = toCents(inv.amount);
+        const paidCents = toCents(inv.amountPaid || 0);
+        const remainingCents = totalCents - paidCents;
+        const targetCents = remainingCents > 0 ? remainingCents : totalCents;
+        if (targetCents <= 0) continue;
+
+        const candidate = availableBookings.find(b => {
+            if (matchedBookingIds.has(b.id)) return false;
+            const bCents = toCents(b.amount);
+            if (bCents !== targetCents && bCents !== totalCents) return false;
+
+            const bDate = b.checkInDate || b.payoutDate;
+            if (bDate) {
+                const diff = Math.abs(differenceInDays(inv.invoiceDate, bDate));
+                if (diff > 14) return false;
+            }
+
+            return true;
+        });
+
+        if (candidate) {
+            matchedBookingIds.add(candidate.id);
+            matchesToCreate.push({
+                invoiceId: inv.id,
+                bookingPaymentId: candidate.id,
+                matchType: 'SUGGESTED_MISMATCH',
+                confidence: 0.60
             });
         }
     }

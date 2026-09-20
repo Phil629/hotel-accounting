@@ -929,7 +929,12 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                     const color = isSuggestion ? '#fde68a' : '#86efac';
                                     let label = '';
                                     let amount = 0;
-                                    if (match.bookingPayment) { label = 'Booking.com'; amount = Number(match.bookingPayment.amount); }
+                                    if (match.bookingPayment) { 
+                                        label = match.bookingPayment.guestName 
+                                            ? `Booking.com (${match.bookingPayment.guestName})` 
+                                            : 'Booking.com'; 
+                                        amount = Number(match.bookingPayment.amount); 
+                                    }
                                     else if (match.cardPayment) { label = `Card (${match.cardPayment.cardType})`; amount = Number(match.cardPayment.amount); }
                                     else if (match.bankTransaction) { label = 'Banküberweisung'; amount = Number(match.bankTransaction.amount); }
                                     if (!label) return null;
