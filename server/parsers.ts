@@ -454,7 +454,7 @@ async function parseZahlungsbericht(filePath: string, encoding: string, delimite
                 date:      h.findIndex(c => c.includes('rechnungsdatum')),
                 type:      h.findIndex(c => c.includes('zahlungsart')),
                 number:    h.findIndex(c => c.includes('rechnungsnummer')),
-                recipient: h.findIndex(c => c.includes('rechnungsempfänger') || c.includes('rechnungsempfaenger')),
+                recipient: h.findIndex(c => c.includes('rechnungsempfänger') || c.includes('rechnungsempfaenger') || c.includes('empf')),
                 amount:    h.findIndex(c => c.includes('gesamt')),
             };
             headerMapped = true;
@@ -470,7 +470,8 @@ async function parseZahlungsbericht(filePath: string, encoding: string, delimite
 
             if (!date || amount === 0) continue;
             
-            if (number.includes('Rechnung')) {
+            // Only shorten if it doesn't contain a Folio reference (e.g. "Rechnung 22931 / Folio #21060-1" must retain Folio)
+            if (number.includes('Rechnung') && !number.includes('Folio')) {
                 const match = number.match(/Rechnung\s+(\d+)/);
                 if (match) {
                     number = match[1];

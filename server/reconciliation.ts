@@ -139,17 +139,58 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         roomIndex++;
         if (roomIndex % 100 === 0) notify(10, `Lese Rechnungen und Zimmer... (${roomIndex}/${unlinkedRooms.length})`);
         const roomNameClean = cleanName(room.guestName);
-        const match = allInvoices.find(inv => {
+        const candidates = allInvoices.filter(inv => {
             const nameMatch = isNameMatch(inv.cleanName, roomNameClean);
             const dateMatch = Math.abs(differenceInDays(room.checkOut, inv.invoiceDate)) <= 3;
             return nameMatch && dateMatch;
         });
+        
+        let match = null;
+        if (candidates.length === 1) {
+            match = candidates[0];
+        } else if (candidates.length > 1) {
+            const roomTotal = Number(room.price) + (room.cityTax ? Number(room.cityTax) : 0);
+            match = candidates.find(inv => Math.abs(Number(inv.amount) - roomTotal) <= 0.05) ||
+                    candidates.find(inv => Math.abs(Number(inv.amount) - Number(room.price)) <= 0.05) ||
+                    candidates[0];
+        }
         
         if (match) {
             roomUpdates.push(prisma.roomReservation.update({
                 where: { id: room.id },
                 data: { invoiceId: match.id }
             }));
+        }
+    }
+
+    // Re-check rooms on unreconciled invoices to fix mislinked assignments where multiple invoices exist
+    const unreconciledRooms = await prisma.roomReservation.findMany({
+        where: {
+            invoice: {
+                isReconciled: false,
+                manualStatus: false
+            }
+        },
+        include: { invoice: true }
+    });
+    for (const room of unreconciledRooms) {
+        if (!room.invoice) continue;
+        const roomTotal = Number(room.price) + (room.cityTax ? Number(room.cityTax) : 0);
+        if (Math.abs(Number(room.invoice.amount) - roomTotal) > 0.05 && Math.abs(Number(room.invoice.amount) - Number(room.price)) > 0.05) {
+            const roomNameClean = cleanName(room.guestName);
+            const candidates = allInvoices.filter(inv => {
+                const nameMatch = isNameMatch(inv.cleanName, roomNameClean);
+                const dateMatch = Math.abs(differenceInDays(room.checkOut, inv.invoiceDate)) <= 3;
+                return nameMatch && dateMatch;
+            });
+            const betterMatch = candidates.find(inv => Math.abs(Number(inv.amount) - roomTotal) <= 0.05) ||
+                                candidates.find(inv => Math.abs(Number(inv.amount) - Number(room.price)) <= 0.05);
+            if (betterMatch && betterMatch.id !== room.invoiceId) {
+                roomUpdates.push(prisma.roomReservation.update({
+                    where: { id: room.id },
+                    data: { invoiceId: betterMatch.id }
+                }));
+            }
         }
     }
     
@@ -161,11 +202,34 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     notify(20, 'Verknüpfe Zahlungsberichte mit Rechnungen... (Schritt 2/5)');
     const unlinkedPms = await prisma.pmsPayment.findMany({ where: { invoiceId: null } });
     const pmsUpdates: Prisma.PrismaPromise<any>[] = [];
+
+    // Pre-populate folio map from existing linked PMS payments
+    const folioToInvoice = new Map<string, typeof allInvoices[0]>();
+    const existingFolios = await prisma.pmsPayment.findMany({
+        where: {
+            invoiceId: { not: null },
+            invoiceNumber: { contains: 'Folio #' }
+        }
+    });
+    for (const ep of existingFolios) {
+        const fm = ep.invoiceNumber?.match(/Folio #(\d+-\d+)/);
+        if (fm && ep.invoiceId) {
+            const invMatch = allInvoices.find(inv => inv.id === ep.invoiceId);
+            if (invMatch) folioToInvoice.set(fm[0], invMatch);
+        }
+    }
+
+    // Process payments with explicit invoice number first so they populate folioToInvoice
+    const sortedUnlinkedPms = [...unlinkedPms].sort((a, b) => {
+        const aHasNum = a.invoiceNumber && extractInvoiceNumber(a.invoiceNumber) ? 1 : 0;
+        const bHasNum = b.invoiceNumber && extractInvoiceNumber(b.invoiceNumber) ? 1 : 0;
+        return bHasNum - aHasNum;
+    });
     
     let pmsIndex = 0;
-    for (const pms of unlinkedPms) {
+    for (const pms of sortedUnlinkedPms) {
         pmsIndex++;
-        if (pmsIndex % 100 === 0) notify(20, `Verknüpfe Zahlungsberichte mit Rechnungen... (${pmsIndex}/${unlinkedPms.length}) (Schritt 2/5)`);
+        if (pmsIndex % 100 === 0) notify(20, `Verknüpfe Zahlungsberichte mit Rechnungen... (${pmsIndex}/${sortedUnlinkedPms.length}) (Schritt 2/5)`);
         let match = null;
         if (pms.invoiceNumber) {
             const pmsNum = extractInvoiceNumber(pms.invoiceNumber);
@@ -173,19 +237,29 @@ export async function runReconciliation(onProgress?: (progress: number, message:
                 match = allInvoices.find(inv => inv.extractedNum === pmsNum && inv.status !== 'CANCELED');
             }
             
+            if (match && pms.invoiceNumber.includes('Folio #')) {
+                const fm = pms.invoiceNumber.match(/Folio #(\d+-\d+)/);
+                if (fm) folioToInvoice.set(fm[0], match);
+            }
+
             if (!match && pms.invoiceNumber.includes('Folio #')) {
                 const folioMatch = pms.invoiceNumber.match(/Folio #(\d+-\d+)/);
                 if (folioMatch) {
                     const folio = folioMatch[0];
-                    const sibling = await prisma.pmsPayment.findFirst({
-                        where: {
-                            invoiceNumber: { contains: folio },
-                            invoiceId: { not: null },
-                            id: { not: pms.id }
+                    if (folioToInvoice.has(folio)) {
+                        match = folioToInvoice.get(folio);
+                    } else {
+                        const sibling = await prisma.pmsPayment.findFirst({
+                            where: {
+                                invoiceNumber: { contains: folio },
+                                invoiceId: { not: null },
+                                id: { not: pms.id }
+                            }
+                        });
+                        if (sibling && sibling.invoiceId) {
+                            match = allInvoices.find(inv => inv.id === sibling.invoiceId);
+                            if (match) folioToInvoice.set(folio, match);
                         }
-                    });
-                    if (sibling && sibling.invoiceId) {
-                        match = allInvoices.find(inv => inv.id === sibling.invoiceId);
                     }
                 }
             }
@@ -202,12 +276,20 @@ export async function runReconciliation(onProgress?: (progress: number, message:
             if (candidates.length === 1) {
                 match = candidates[0];
             } else if (candidates.length > 1) {
-                const exactMatch = candidates.find(inv => Number(inv.amount) === Number(pms.amount));
+                const pmsAmt = Number(pms.amount);
+                const exactMatch = candidates.find(inv => 
+                    Math.abs(Number(inv.amount) - pmsAmt) <= 0.05 ||
+                    Math.abs((Number(inv.amount) - (Number(inv.cityTaxAmount) || 0)) - pmsAmt) <= 0.05
+                );
                 if (exactMatch) {
                     match = exactMatch;
                 } else {
                     match = null;
                 }
+            }
+            if (match && pms.invoiceNumber?.includes('Folio #')) {
+                const fm = pms.invoiceNumber.match(/Folio #(\d+-\d+)/);
+                if (fm) folioToInvoice.set(fm[0], match);
             }
         }
         
@@ -307,6 +389,15 @@ export async function runReconciliation(onProgress?: (progress: number, message:
     for (let i = 0; i < invoiceUpdates.length; i += 50) {
         await prisma.$transaction(invoiceUpdates.slice(i, i + 50));
     }
+
+    // 3.5. Bereinige verwaiste Matches (z.B. Matches, deren pmsPayment nicht mehr verknüpft ist)
+    await prisma.reconciliationMatch.deleteMany({
+        where: {
+            pmsPayment: {
+                invoiceId: null
+            }
+        }
+    });
 
     // 4. Match PmsPayments against Bank/Card/Booking (Geschlossene Monate und bereits ausgeglichene Rechnungen überspringen)
     notify(50, 'Lade externe Bank- und Kreditkartendaten... (Schritt 4/5)');
