@@ -300,40 +300,12 @@ app.post('/api/reconcile', async (_req, res) => {
     }
 });
 
-// Get invoices — last 4 months + older months that still have open invoices.
-// Optional ?months=YYYY-MM,YYYY-MM to force-load specific older months.
-app.get('/api/invoices', async (req, res) => {
+// Get invoices — lädt alle Rechnungen (auch abgeschlossene und ältere Monate sind immer vollständig sichtbar)
+app.get('/api/invoices', async (_req, res) => {
     try {
-        const extraMonths = req.query.months
-            ? (req.query.months as string).split(',')
-            : [];
-
-        const cutoff = new Date();
-        cutoff.setMonth(cutoff.getMonth() - 3);
-        cutoff.setDate(1);
-        cutoff.setHours(0, 0, 0, 0);
-
-        const orConditions: object[] = [
-            { invoiceDate: { gte: cutoff } },
-            { invoiceDate: { lt: cutoff }, isReconciled: false, manualStatus: false },
-        ];
-
-        for (const m of extraMonths) {
-            const [year, mon] = m.split('-').map(Number);
-            if (!isNaN(year) && !isNaN(mon) && mon >= 1 && mon <= 12) {
-                orConditions.push({
-                    invoiceDate: {
-                        gte: new Date(year, mon - 1, 1),
-                        lt:  new Date(year, mon,     1),
-                    },
-                });
-            }
-        }
-
         const invoices = await prisma.invoice.findMany({
             where:   { 
-                status: { not: 'CANCELED' },
-                OR: orConditions 
+                status: { not: 'CANCELED' }
             },
             include: {
                 matches: {

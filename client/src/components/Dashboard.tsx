@@ -132,27 +132,15 @@ export const Dashboard: React.FC = () => {
         }
     };
 
-    const [fullyLoadedMonths, setFullyLoadedMonths] = useState<Set<string>>(() => {
-        const defaultLoaded = new Set<string>();
-        for (let i = 0; i < 4; i++) {
-            const d = new Date();
-            d.setMonth(d.getMonth() - i);
-            defaultLoaded.add(d.toLocaleDateString('de-DE', { year: 'numeric', month: 'long' }));
-        }
-        return defaultLoaded;
-    });
-
-    const showToast = (message: string, type: 'success' | 'error' | 'info') => {
+        const showToast = (message: string, type: 'success' | 'error' | 'info') => {
         setToast({ message, type });
     };
 
-    const fetchInvoices = async (monthsToLoad?: Set<string>) => {
+    const fetchInvoices = async () => {
         setLoading(true);
         setError(null);
         try {
-            const currentLoaded = monthsToLoad || fullyLoadedMonths;
-            const monthsParam = Array.from(currentLoaded).map(monthNameToYYYYMM).filter(Boolean);
-            const data = await api.getInvoices(monthsParam);
+            const data = await api.getInvoices();
             if (Array.isArray(data)) {
                 setInvoices(data);
             } else {
@@ -431,14 +419,8 @@ export const Dashboard: React.FC = () => {
         return <span>{sortDirection === 'asc' ? '↑' : '↓'}</span>;
     };
 
-    const handleMonthClick = async (month: string) => {
+    const handleMonthClick = (month: string) => {
         setSelectedMonth(month);
-        if (!fullyLoadedMonths.has(month)) {
-            const newFullyLoaded = new Set(fullyLoadedMonths);
-            newFullyLoaded.add(month);
-            setFullyLoadedMonths(newFullyLoaded);
-            await fetchInvoices(newFullyLoaded);
-        }
     };
 
     // Set default selected month when months change
@@ -547,24 +529,19 @@ export const Dashboard: React.FC = () => {
                 <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', overflowX: 'auto', paddingBottom: '0.5rem' }}>
                     {sortedMonths.map(month => {
                         const files = (importStatus as any)[month] || [];
-                        const hasFiles = files.length > 0;
                         const fileListString = files.map((f: any) => `- ${f.originalName}`).join('\n');
                         const ms = monthStatus[month];
+                        const yyyymm = monthNameToYYYYMM(month);
+                        const isClosed = closedMonths.has(yyyymm);
                         const allDone = ms?.allDone ?? false;
-                        const isFullyLoaded = fullyLoadedMonths.has(month);
-
-                        // Wenn der Monat nicht vollständig geladen ist und keine Rechnungen vom Backend 
-                        // für diesen Monat mitgeschickt wurden (ms ist undefined), bedeutet das, 
-                        // dass es keine offenen Rechnungen gibt (da diese immer geladen werden).
-                        const assumedAllDone = allDone || (!isFullyLoaded && !ms);
 
                         const bgColor = selectedMonth === month
                             ? 'var(--primary)'
-                            : assumedAllDone && hasFiles
+                            : allDone
                                 ? '#bbf7d0'   // green: all reconciled
-                                : hasFiles
-                                    ? '#fef3c7' // yellow: files uploaded but open invoices
-                                    : 'white';  // white: no files
+                                : (ms?.open ?? 0) > 0
+                                    ? '#fef3c7' // yellow: open invoices
+                                    : 'white';  // white: no invoices
 
                         return (
                             <button
@@ -587,16 +564,12 @@ export const Dashboard: React.FC = () => {
                                 }}
                             >
                                 <div style={{ fontWeight: 'bold' }}>
-                                    {closedMonths.has(monthNameToYYYYMM(month)) ? `🔒 ${month}` : month}
+                                    {isClosed ? `🔒 ${month}` : month}
                                 </div>
-                                {!isFullyLoaded ? (
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
-                                        (zum laden klicken)
-                                    </div>
-                                ) : ms ? (
+                                {ms ? (
                                     <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
                                         {ms.allDone
-                                            ? '✅ Vollständig'
+                                            ? (isClosed ? '✅ Abgeschlossen' : '✅ Vollständig')
                                             : `${ms.open} offen`}
                                     </div>
                                 ) : (
