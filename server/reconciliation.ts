@@ -305,43 +305,91 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         await prisma.$transaction(pmsUpdates.slice(i, i + 50));
     }
 
-    // 2.5. Korrigiere verwaiste Zahlungen auf Storno-Rechnungen
+    // 2.5. Korrigiere verwaiste Zahlungen auf Storno-Rechnungen (sowohl Einzel- als auch Gruppenzahlungen)
     notify(30, 'Korrigiere verwaiste Zahlungen auf Stornos... (Schritt 2.5/5)');
-    const stornoPayments = await prisma.pmsPayment.findMany({
-        where: { invoice: { amount: 0, recipient: 'Storno / Canceled' } },
-        include: { invoice: true }
+    const canceledInvoicesWithPayments = await prisma.invoice.findMany({
+        where: {
+            OR: [
+                { status: 'CANCELED' },
+                { amount: 0, recipient: 'Storno / Canceled' }
+            ],
+            pmsPayments: { some: {} }
+        },
+        include: { pmsPayments: true }
     });
     
-    if (stornoPayments.length > 0) {
+    if (canceledInvoicesWithPayments.length > 0) {
         const openInvoices = await prisma.invoice.findMany({
             where: { status: 'OPEN', amountPaid: 0 }
         });
         
         const stornoUpdates: Prisma.PrismaPromise<any>[] = [];
+        const matchUpdates: Prisma.PrismaPromise<any>[] = [];
         
-        for (const pms of stornoPayments) {
-            if (Number(pms.amount) <= 0) continue; 
+        for (const canceledInv of canceledInvoicesWithPayments) {
+            const validPayments = canceledInv.pmsPayments.filter(p => Number(p.amount) > 0);
+            if (validPayments.length === 0) continue;
             
-            const pmsNameClean = cleanName(pms.recipient);
+            const totalPaid = validPayments.reduce((sum, p) => sum + Number(p.amount), 0);
+            const pmsRecipient = validPayments[0]?.recipient || canceledInv.recipient;
+            const pmsNameClean = cleanName(pmsRecipient);
             
-            const candidates = openInvoices.filter(inv => {
-                const amountMatch = Number(inv.amount) === Number(pms.amount);
-                const nameMatch = isNameMatch(cleanName(inv.recipient), pmsNameClean);
+            // Check 1: Gruppierter Abgleich (alle Zahlungen auf der Storno-Rechnung entsprechen der neuen offenen Rechnung)
+            const groupedCandidates = openInvoices.filter(openInv => {
+                const amountMatch = Math.abs(Number(openInv.amount) - totalPaid) <= 0.05;
+                const nameMatch = isNameMatch(cleanName(openInv.recipient), pmsNameClean);
                 return amountMatch && nameMatch;
             });
             
-            if (candidates.length === 1) {
-                const match = candidates[0];
-                stornoUpdates.push(prisma.pmsPayment.update({
-                    where: { id: pms.id },
-                    data: { invoiceId: match.id, invoiceNumber: match.invoiceNumber }
+            if (groupedCandidates.length === 1) {
+                const match = groupedCandidates[0];
+                for (const pms of validPayments) {
+                    stornoUpdates.push(prisma.pmsPayment.update({
+                        where: { id: pms.id },
+                        data: { invoiceId: match.id, invoiceNumber: match.invoiceNumber }
+                    }));
+                }
+                matchUpdates.push(prisma.reconciliationMatch.updateMany({
+                    where: { invoiceId: canceledInv.id },
+                    data: { invoiceId: match.id }
                 }));
-                console.log(`Auto-fixed storno payment ${pms.id} (${pms.amount} EUR for ${pms.recipient}) -> moved to invoice ${match.invoiceNumber}`);
+                console.log(`Auto-fixed ${validPayments.length} grouped payments (${totalPaid} EUR for ${pmsRecipient}) from canceled inv ${canceledInv.invoiceNumber} -> moved to invoice ${match.invoiceNumber}`);
+                const idx = openInvoices.indexOf(match);
+                if (idx > -1) openInvoices.splice(idx, 1);
+                continue;
+            }
+            
+            // Check 2: Einzelner Zahlungsabgleich
+            for (const pms of validPayments) {
+                const singleNameClean = cleanName(pms.recipient);
+                const singleCandidates = openInvoices.filter(openInv => {
+                    const amountMatch = Math.abs(Number(openInv.amount) - Number(pms.amount)) <= 0.05;
+                    const nameMatch = isNameMatch(cleanName(openInv.recipient), singleNameClean);
+                    return amountMatch && nameMatch;
+                });
+                
+                if (singleCandidates.length === 1) {
+                    const match = singleCandidates[0];
+                    stornoUpdates.push(prisma.pmsPayment.update({
+                        where: { id: pms.id },
+                        data: { invoiceId: match.id, invoiceNumber: match.invoiceNumber }
+                    }));
+                    matchUpdates.push(prisma.reconciliationMatch.updateMany({
+                        where: { pmsPaymentId: pms.id },
+                        data: { invoiceId: match.id }
+                    }));
+                    console.log(`Auto-fixed storno payment ${pms.id} (${pms.amount} EUR for ${pms.recipient}) -> moved to invoice ${match.invoiceNumber}`);
+                    const idx = openInvoices.indexOf(match);
+                    if (idx > -1) openInvoices.splice(idx, 1);
+                }
             }
         }
         
         for (let i = 0; i < stornoUpdates.length; i += 50) {
             await prisma.$transaction(stornoUpdates.slice(i, i + 50));
+        }
+        for (let i = 0; i < matchUpdates.length; i += 50) {
+            await prisma.$transaction(matchUpdates.slice(i, i + 50));
         }
     }
 

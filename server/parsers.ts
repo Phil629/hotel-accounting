@@ -349,7 +349,14 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
 
     async function flushBatch() {
         if (invoicesMap.size === 0) return;
-        const batch = Array.from(invoicesMap.values());
+        const batch = Array.from(invoicesMap.values()).map(inv => {
+            if (inv._paymentTypes && inv._paymentTypes.size > 0) {
+                const sorted = Array.from(inv._paymentTypes.entries()).sort((a: any, b: any) => b[1] - a[1]);
+                inv.paymentType = sorted.map((e: any) => e[0]).filter(Boolean).join(' / ');
+            }
+            delete inv._paymentTypes;
+            return inv;
+        });
         await prisma.invoice.createMany({ data: batch, skipDuplicates: true });
         invoicesMap.clear();
     }
@@ -396,11 +403,12 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                 if (is7Percent) existing.tax7Amount = (existing.tax7Amount || 0) + amount;
                 if (is19Percent) existing.tax19Amount = (existing.tax19Amount || 0) + amount;
                 
-                // Falls paymentType noch leer ist, Ǭbernehmen (optional, da Rechnungsbericht oft gesplittet ist)
-                if (!existing.paymentType && typeStr) {
-                    existing.paymentType = typeStr;
+if (typeStr && existing._paymentTypes) {
+                    existing._paymentTypes.set(typeStr, (existing._paymentTypes.get(typeStr) || 0) + amount);
                 }
             } else {
+                const typesMap = new Map<string, number>();
+                if (typeStr) typesMap.set(typeStr, amount);
                 invoicesMap.set(number, {
                     invoiceDate:    date,
                     paymentType:    typeStr,
@@ -415,6 +423,7 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                     status:         amount === 0 ? 'PAID' : 'OPEN',
                     isReconciled:   amount === 0 ? true : false,
                     manualStatus:   false,
+                    _paymentTypes:  typesMap
                 });
                 count++;
             }
