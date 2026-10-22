@@ -192,3 +192,10 @@ model RoomReservation {
 
   @@index([checkIn])
 }
+
+model ClosedMonth {
+  id       Int      @id @default(autoincrement())
+  month    String   @unique // format "YYYY-MM", e.g. "2026-01"
+  closedAt DateTime @default(now())
+}
+

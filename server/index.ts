@@ -8,6 +8,7 @@ import fs from 'fs';
 import prisma from './db';
 import { processFile } from './parsers';
 import { runReconciliation } from './reconciliation';
+import { listAutoBackups, restoreLatestAutoBackup } from './backupService';
 
 const app = express();
 const port = process.env.PORT || 3010;
@@ -84,6 +85,60 @@ function requireAdminKey(
 
 app.get('/api/health', (_req, res) => {
     res.json({ status: 'ok' });
+});
+
+// ─── Closed Months ────────────────────────────────────────────────────────────
+app.get('/api/closed-months', async (_req, res) => {
+    try {
+        const closed = await prisma.closedMonth.findMany({ orderBy: { month: 'asc' } });
+        res.json(closed.map(c => c.month));
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to fetch closed months' });
+    }
+});
+
+app.post('/api/closed-months', async (req, res) => {
+    try {
+        const { month, closed } = req.body;
+        if (!month) {
+            res.status(400).json({ error: 'month parameter required (YYYY-MM)' });
+            return;
+        }
+        if (closed) {
+            await prisma.closedMonth.upsert({
+                where: { month },
+                create: { month },
+                update: {}
+            });
+        } else {
+            await prisma.closedMonth.deleteMany({
+                where: { month }
+            });
+        }
+        const allClosed = await prisma.closedMonth.findMany({ orderBy: { month: 'asc' } });
+        res.json({ success: true, closedMonths: allClosed.map(c => c.month) });
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to update closed month' });
+    }
+});
+
+// ─── Auto Backups ─────────────────────────────────────────────────────────────
+app.get('/api/backups', async (_req, res) => {
+    try {
+        const backups = await listAutoBackups();
+        res.json(backups);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to list backups' });
+    }
+});
+
+app.post('/api/backups/restore-latest', async (_req, res) => {
+    try {
+        const result = await restoreLatestAutoBackup();
+        res.json(result);
+    } catch (e) {
+        res.status(500).json({ error: 'Failed to restore latest backup' });
+    }
 });
 
 // Run reconciliation & Progress Stream

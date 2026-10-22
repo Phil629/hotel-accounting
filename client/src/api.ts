@@ -104,5 +104,35 @@ export const api = {
         const res = await fetch(`${API_URL}/backup`);
         if (!res.ok) throw new Error('Failed to download backup');
         return res.json();
+    },
+
+    async getClosedMonths(): Promise<string[]> {
+        const res = await fetch(`${API_URL}/closed-months`);
+        if (!res.ok) throw new Error('Failed to fetch closed months');
+        return res.json();
+    },
+
+    async toggleCloseMonth(month: string, closed: boolean): Promise<{ success: boolean; closedMonths: string[] }> {
+        const res = await fetch(`${API_URL}/closed-months`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ month, closed })
+        });
+        if (!res.ok) throw new Error('Failed to toggle month closure');
+        return res.json();
+    },
+
+    async getBackups() {
+        const res = await fetch(`${API_URL}/backups`);
+        if (!res.ok) throw new Error('Failed to fetch backups');
+        return res.json();
+    },
+
+    async restoreLatestBackup() {
+        const res = await fetch(`${API_URL}/backups/restore-latest`, {
+            method: 'POST'
+        });
+        if (!res.ok) throw new Error('Failed to restore latest backup');
+        return res.json();
     }
 };

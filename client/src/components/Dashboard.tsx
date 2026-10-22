@@ -82,6 +82,55 @@ export const Dashboard: React.FC = () => {
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [selectedMonthsToDelete, setSelectedMonthsToDelete] = useState<Set<string>>(new Set());
     const [deleting, setDeleting] = useState(false);
+    const [closedMonths, setClosedMonths] = useState<Set<string>>(new Set());
+
+    const fetchClosedMonths = async () => {
+        try {
+            const list = await api.getClosedMonths();
+            setClosedMonths(new Set(list));
+        } catch (e) {
+            console.error('Failed to fetch closed months:', e);
+        }
+    };
+
+    const handleToggleCloseMonth = async (monthKey: string) => {
+        const yyyymm = monthNameToYYYYMM(monthKey);
+        if (!yyyymm) return;
+        const isCurrentlyClosed = closedMonths.has(yyyymm);
+        try {
+            const res = await api.toggleCloseMonth(yyyymm, !isCurrentlyClosed);
+            setClosedMonths(new Set(res.closedMonths));
+            showToast(
+                !isCurrentlyClosed 
+                    ? `${monthKey} wurde erfolgreich abgeschlossen & geschützt!` 
+                    : `${monthKey} wurde wieder entsperrt.`, 
+                'success'
+            );
+        } catch (e: any) {
+            showToast(`Fehler beim Ändern des Monatsstatus: ${e.message}`, 'error');
+        }
+    };
+
+    const handleRestoreLatestBackup = async () => {
+        if (!window.confirm('Möchtest du wirklich den letzten automatischen Sicherheitsstand wiederherstellen? Alle Zuordnungen und Status werden auf den Stand vor dem letzten Abgleich zurückgesetzt.')) {
+            return;
+        }
+        try {
+            setLoading(true);
+            const res = await api.restoreLatestBackup();
+            if (res.success) {
+                showToast(res.message, 'success');
+                await fetchInvoices();
+                await fetchClosedMonths();
+            } else {
+                showToast(res.message, 'error');
+            }
+        } catch (e: any) {
+            showToast(`Fehler: ${e.message}`, 'error');
+        } finally {
+            setLoading(false);
+        }
+    };
 
     const [fullyLoadedMonths, setFullyLoadedMonths] = useState<Set<string>>(() => {
         const defaultLoaded = new Set<string>();
@@ -130,6 +179,7 @@ export const Dashboard: React.FC = () => {
     useEffect(() => {
         fetchInvoices();
         fetchImportStatus();
+        fetchClosedMonths();
     }, []);
 
     const handleReconcile = async () => {
@@ -444,6 +494,13 @@ export const Dashboard: React.FC = () => {
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <button className="btn"
+                        onClick={handleRestoreLatestBackup}
+                        title="Stellt den automatischen Sicherheitsstand vor dem letzten Abgleich wieder her"
+                        style={{ backgroundColor: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
+                    >
+                        ↺ Auto-Backup Stand
+                    </button>
+                    <button className="btn"
                         onClick={async () => {
                             try {
                                 showToast('Backup wird generiert...', 'info');
@@ -529,7 +586,9 @@ export const Dashboard: React.FC = () => {
                                     minWidth: '100px',
                                 }}
                             >
-                                <div style={{ fontWeight: 'bold' }}>{month}</div>
+                                <div style={{ fontWeight: 'bold' }}>
+                                    {closedMonths.has(monthNameToYYYYMM(month)) ? `🔒 ${month}` : month}
+                                </div>
                                 {!isFullyLoaded ? (
                                     <div style={{ fontSize: '0.7rem', opacity: 0.85 }}>
                                         (zum laden klicken)
@@ -603,7 +662,80 @@ export const Dashboard: React.FC = () => {
                 // Month View
                 selectedMonth && (
                     <div key={selectedMonth} style={{ marginBottom: '2rem' }}>
-                        <h3 style={{ borderBottom: '2px solid var(--border)', paddingBottom: '0.5rem', marginBottom: '0.75rem' }}>{selectedMonth}</h3>
+                        {(() => {
+                            const yyyymm = monthNameToYYYYMM(selectedMonth);
+                            const isClosedMonth = closedMonths.has(yyyymm);
+                            const selectedFiles = (importStatus as any)[selectedMonth] || [];
+                            const hasInv = selectedFiles.some((f: any) => f.type === 'RECHNUNGSBERICHT');
+                            const hasPay = selectedFiles.some((f: any) => ['ZAHLUNGSBERICHT', 'BANK', 'NEXI', 'BOOKING', 'PAYPAL'].includes(f.type));
+                            const showMissingNotice = hasInv && !hasPay;
+
+                            return (
+                                <>
+                                    <div style={{
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        borderBottom: '2px solid var(--border)',
+                                        paddingBottom: '0.5rem',
+                                        marginBottom: '0.75rem'
+                                    }}>
+                                        <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                            {isClosedMonth ? '🔒' : '📅'} {selectedMonth}
+                                            {isClosedMonth && (
+                                                <span style={{
+                                                    fontSize: '0.75rem',
+                                                    padding: '0.2rem 0.5rem',
+                                                    borderRadius: '4px',
+                                                    backgroundColor: '#dcfce7',
+                                                    color: '#166534',
+                                                    fontWeight: 'normal'
+                                                }}>
+                                                    Abgeschlossen & Geschützt
+                                                </span>
+                                            )}
+                                        </h3>
+                                        <button
+                                            className="btn"
+                                            onClick={() => handleToggleCloseMonth(selectedMonth)}
+                                            style={{
+                                                fontSize: '0.8rem',
+                                                padding: '0.35rem 0.75rem',
+                                                display: 'flex',
+                                                alignItems: 'center',
+                                                gap: '0.4rem',
+                                                backgroundColor: isClosedMonth ? '#fef3c7' : '#f0fdf4',
+                                                color: isClosedMonth ? '#92400e' : '#166534',
+                                                border: `1px solid ${isClosedMonth ? '#fde68a' : '#bbf7d0'}`
+                                            }}
+                                            title={isClosedMonth ? 'Klicken, um diesen Monat für nachträgliche Bearbeitungen wieder zu öffnen' : 'Diesen Monat abschließen und vor automatischen Änderungen schützen'}
+                                        >
+                                            {isClosedMonth ? '🔓 Monat wieder öffnen' : '🔒 Monat abschließen & schützen'}
+                                        </button>
+                                    </div>
+
+                                    {showMissingNotice && (
+                                        <div style={{
+                                            padding: '0.6rem 1rem',
+                                            borderRadius: 'var(--radius)',
+                                            backgroundColor: '#f0f9ff',
+                                            border: '1px solid #bae6fd',
+                                            color: '#0369a1',
+                                            fontSize: '0.85rem',
+                                            marginBottom: '1rem',
+                                            display: 'flex',
+                                            alignItems: 'center',
+                                            gap: '0.5rem'
+                                        }}>
+                                            <span>ℹ️</span>
+                                            <span>
+                                                <strong>Hinweis:</strong> Für diesen Monat liegen Rechnungen vor, aber noch keine Zahlungsberichte oder Bank-/Kartenexporte. Zahlungen werden automatisch zugeordnet, sobald die entsprechenden Dateien hochgeladen werden.
+                                            </span>
+                                        </div>
+                                    )}
+                                </>
+                            );
+                        })()}
                         
                         {groupedInvoices[selectedMonth] ? (
                             <>

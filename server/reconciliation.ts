@@ -1,5 +1,6 @@
 import { Invoice, BankTransaction, BookingPayment, CardPayment, PmsPayment, RoomReservation, Prisma } from '@prisma/client';
 import prisma from './db';
+import { createAutoBackup } from './backupService';
 
 const DATE_TOLERANCE_DAYS      = 5;
 const BANK_DATE_TOLERANCE_DAYS = 60;
@@ -106,7 +107,17 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         if (onProgress) onProgress(p, m);
     };
 
+    notify(2, 'Erstelle Sicherheits-Snapshot vor dem Abgleich...');
+    await createAutoBackup();
+
     notify(5, 'Starte Abgleich: Lese Rechnungen und Zimmer... (Schritt 1/5)');
+    const closedMonths = await prisma.closedMonth.findMany();
+    const closedSet = new Set(closedMonths.map(c => c.month));
+    const isMonthClosed = (d: Date) => {
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        return closedSet.has(key);
+    };
+
     const nineMonthsAgo = new Date();
     nineMonthsAgo.setMonth(nineMonthsAgo.getMonth() - 9);
 
@@ -252,15 +263,20 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
 
-    // 3. Update Invoice amounts and statuses
+    // 3. Update Invoice amounts and statuses (Nur offene Rechnungen, geschützte Monate überspringen)
     notify(35, 'Aktualisiere Rechnungsstatus (Bezahlt/Offen)... (Schritt 3/5)');
     const invoicesWithPayments = await prisma.invoice.findMany({
+        where: {
+            isReconciled: false,
+            manualStatus: false
+        },
         include: { pmsPayments: true, roomReservations: true }
     });
     
     const invoiceUpdates: Prisma.PrismaPromise<any>[] = [];
     
     for (const inv of invoicesWithPayments) {
+        if (isMonthClosed(inv.invoiceDate)) continue;
         let paid = 0;
         for (const p of inv.pmsPayments) {
             paid += Number(p.amount);
@@ -292,11 +308,18 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         await prisma.$transaction(invoiceUpdates.slice(i, i + 50));
     }
 
-    // 4. Match PmsPayments against Bank/Card/Booking
+    // 4. Match PmsPayments against Bank/Card/Booking (Geschlossene Monate und bereits ausgeglichene Rechnungen überspringen)
     notify(50, 'Lade externe Bank- und Kreditkartendaten... (Schritt 4/5)');
-    const [pmsPaymentsToMatch, bookingPayments, cardPayments, bankTransactions] = await Promise.all([
+    const [pmsPaymentsRaw, bookingPayments, cardPayments, bankTransactions] = await Promise.all([
         prisma.pmsPayment.findMany({
-            where: { matches: { none: {} }, invoiceId: { not: null } },
+            where: {
+                matches: { none: {} },
+                invoiceId: { not: null },
+                invoice: {
+                    isReconciled: false,
+                    manualStatus: false
+                }
+            },
             include: { invoice: { include: { roomReservations: true } } }
         }),
         prisma.bookingPayment.findMany({
@@ -313,6 +336,7 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }),
     ]);
 
+    const pmsPaymentsToMatch = pmsPaymentsRaw.filter(p => p.invoice && !isMonthClosed(p.invoice.invoiceDate));
     const availableBookings = bookingPayments.filter(p => p.matches.length === 0);
     const availableCards    = cardPayments.filter(p => p.matches.length === 0);
     const availableBanks    = bankTransactions.filter(p => p.matches.length === 0);
@@ -422,14 +446,14 @@ export async function runReconciliation(onProgress?: (progress: number, message:
 
     // 4.6 Direkter Bankabgleich für offene Rechnungen (z.B. Firmen / Rechnungszahler)
     notify(92, 'Prüfe direkte Banküberweisungen für offene Rechnungen...');
-    const openInvoicesForDirectMatch = await prisma.invoice.findMany({
+    const openInvoicesDirectRaw = await prisma.invoice.findMany({
         where: {
             isReconciled: false,
-            manualStatus: false,
-            invoiceDate: { gte: nineMonthsAgo }
+            manualStatus: false
         },
         include: { roomReservations: true, pmsPayments: true }
     });
+    const openInvoicesForDirectMatch = openInvoicesDirectRaw.filter(i => !isMonthClosed(i.invoiceDate));
 
     const directInvoiceUpdates: { id: number; amountPaid: number }[] = [];
 
@@ -593,13 +617,18 @@ export async function runReconciliation(onProgress?: (progress: number, message:
         }
     }
 
-    const allInvoicesToCheck = await prisma.invoice.findMany({
+    const allInvoicesToCheckRaw = await prisma.invoice.findMany({
+        where: {
+            isReconciled: false,
+            manualStatus: false
+        },
         include: {
             pmsPayments: { include: { matches: true } },
             matches: true,
             roomReservations: true
         }
     });
+    const allInvoicesToCheck = allInvoicesToCheckRaw.filter(i => !isMonthClosed(i.invoiceDate));
     
     let fullyReconciled = 0;
     const reconcileUpdateIds: number[] = [];
