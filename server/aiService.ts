@@ -152,6 +152,24 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
     orderBy: { payoutDate: 'desc' },
   });
 
+  // Rank candidate transactions so most relevant are always presented to Gemini
+  const scoredBanks = candidateBanks.map(b => {
+    let score = 0;
+    if (Math.abs(toCents(b.amount) - targetCents) <= 1) score += 100;
+    if (nameParts.some(p => `${b.senderReceiver || ''} ${b.description || ''}`.toLowerCase().includes(p))) score += 50;
+    const dayDiff = Math.abs((b.bookingDate.getTime() - invDate.getTime()) / 86400000);
+    score -= dayDiff;
+    return { b, score };
+  }).sort((a, b) => b.score - a.score).map(x => x.b);
+
+  const scoredCards = candidateCards.map(c => {
+    let score = 0;
+    if (Math.abs(toCents(c.amount) - targetCents) <= 1) score += 100;
+    const dayDiff = Math.abs((c.transactionDate.getTime() - invDate.getTime()) / 86400000);
+    score -= dayDiff * 5;
+    return { c, score };
+  }).sort((a, b) => b.score - a.score).map(x => x.c);
+
   // ─── 2. Gemini LLM Analysis (if API key available) ─────────────────────────
   const apiKey = customApiKey || process.env.GEMINI_API_KEY;
 
@@ -170,10 +188,10 @@ RECHNUNGSDATEN:
 - Bestehender Kommentar: ${inv.comment || 'Keiner'}
 
 POTENZIELL PASSENDE BANK-ÜBERWEISUNGEN:
-${candidateBanks.slice(0, 10).map(b => `- ID ${b.id}: ${Number(b.amount).toFixed(2)} € am ${new Date(b.bookingDate).toLocaleDateString('de-DE')} von '${b.senderReceiver || 'Unbekannt'}' | Verwendungszweck: '${b.description || ''}'`).join('\n') || 'Keine Banküberweisungen im Zeitfenster'}
+${scoredBanks.slice(0, 12).map(b => `- ID ${b.id}: ${Number(b.amount).toFixed(2)} € am ${new Date(b.bookingDate).toLocaleDateString('de-DE')} von '${b.senderReceiver || 'Unbekannt'}' | Verwendungszweck: '${b.description || ''}'`).join('\n') || 'Keine Banküberweisungen im Zeitfenster'}
 
 POTENZIELL PASSENDE KARTENZAHLUNGEN (NEXI TERMINAL):
-${candidateCards.slice(0, 12).map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine ungematchten Kartenzahlungen'}
+${scoredCards.slice(0, 15).map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine ungematchten Kartenzahlungen'}
 
 POTENZIELL PASSENDE BOOKING.COM AUSZAHLUNGEN:
 ${candidateBookings.slice(0, 6).map(bp => `- ID ${bp.id}: ${Number(bp.amount).toFixed(2)} € für Gast '${bp.guestName || 'Unbekannt'}' (Ref: ${bp.referenceNumber}, Auszahlung: ${bp.payoutDate ? new Date(bp.payoutDate).toLocaleDateString('de-DE') : 'k.A.'})`).join('\n') || 'Keine Booking-Auszahlungen'}
@@ -198,7 +216,7 @@ Antworte AUSSCHLIESSLICH als gültiges JSON im folgenden Schema (kein Codeblock)
   ]
 }`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
