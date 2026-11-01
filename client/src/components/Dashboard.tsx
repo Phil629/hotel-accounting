@@ -1217,12 +1217,14 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                 }}>
                                     !
                                 </span>
-                                <div className="tooltip tooltip-rich" style={{
-                                    minWidth: '240px',
-                                    maxWidth: '320px',
+                                <div className="tooltip tooltip-rich tooltip-right-aligned" style={{
+                                    width: '300px',
+                                    maxWidth: '85vw',
                                     whiteSpace: 'normal',
+                                    wordBreak: 'break-word',
+                                    overflowWrap: 'break-word',
                                     textAlign: 'left',
-                                    padding: '10px 12px',
+                                    padding: '10px 14px',
                                     fontSize: '0.82rem',
                                     lineHeight: 1.45,
                                     background: '#1e1b4b',
@@ -1230,7 +1232,7 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                                     borderRadius: '8px',
                                     boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
                                     border: '1px solid rgba(255,255,255,0.15)',
-                                    zIndex: 100,
+                                    zIndex: 999,
                                 }}>
                                     <div style={{ fontWeight: 700, color: '#fde047', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                                         <span>✨ KI-Prüfbericht:</span>

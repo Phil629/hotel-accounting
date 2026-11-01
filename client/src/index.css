@@ -176,6 +176,21 @@ td {
   white-space: normal;
 }
 
+.tooltip.tooltip-right-aligned {
+  left: auto !important;
+  right: -8px !important;
+  margin-left: 0 !important;
+  width: 300px;
+  max-width: calc(100vw - 32px);
+}
+
+.tooltip.tooltip-right-aligned::after {
+  left: auto !important;
+  right: 12px !important;
+  margin-left: 0 !important;
+  border-color: #1e1b4b transparent transparent transparent !important;
+}
+
 .tooltip::after {
   content: "";
   position: absolute;
