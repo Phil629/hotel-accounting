@@ -136,18 +136,22 @@ ${bookingPayments.map(bp => `- ID ${bp.id}: ${Number(bp.amount).toFixed(2)} € 
 --- DEINE PRÜFUNGSAUFGABE ---
 1. Analysiere den Sachverhalt logisch über alle Zahlungswege (Banküberweisungen, Terminal-Kartenzahlungen, PayPal-Zahlungen, Booking-Auszahlungen):
    - Welcher Teil der Rechnung ist bereits gedeckt (z.B. Logis per PayPal oder Überweisung, CityTax vor Ort)?
-   - Welcher Betrag steht noch offen und wie sollte dieser bezahlt werden (z.B. PayPal, Girocard, Überweisung)?
-   - WICHTIG BEI PAYPAL: Wenn laut Hotelsoftware 'PayPal' gebucht ist oder der Gast online bezahlt hat, prüfe die Liste der Karten- & PayPal-Zahlungen sorgfältig. Häufig zahlen Gäste den reinen Zimmerpreis/Logis (z.B. 180.00 €) vorab per PayPal, während die CityTax (z.B. 6.00 €) offen bleibt. Ordne eine solche passende PayPal-Transaktion unbedingt zu und setze den Status auf PARTIAL (oder PAID, falls der Gesamtbetrag passt).
-2. Strenge Vorsicht bei Zuordnungen:
-   - Ordne eine Zahlung NUR zu, wenn Betrag und Kontext (Name, Gast, Rechnungsbetrag, Teilbetrag der Logis oder klares Zahlart-Schema) zusammenpassen.
-   - Wenn eine Firmenrechnung per Überweisung bezahlt werden soll und auf dem Bankkonto kein passendes Geld eingegangen ist, ist die Rechnung "OPEN" (oder "PARTIAL", falls ein Teilbetrag bereits nachgewiesen ist). Erfinde NIEMALS fremde Zahlungen!
-3. Wenn die Rechnung nicht vollständig bezahlt ist: Setze "status": "OPEN" oder "PARTIAL", nenne den genauen offenen Restbetrag und erkläre dem Nutzer verständlich auf Deutsch, was nachgewiesen wurde und was noch aussteht.
+   - Welcher Betrag steht noch offen und wie sollte dieser bezahlt werden?
+2. STRENGSTE REGEL FÜR ZAHLUNGSZUORDNUNGEN (matchedTransactions):
+   - Der Betrag einer Transaktion MUSS AUF DEN CENT GENAU mit dem Rechnungs-Gesamtbetrag ODER einem der im PMS ausgewiesenen Teilbeträge (z. B. Logis oder CityTax) übereinstimmen!
+   - Es ist STRENGSTENS VERBOTEN, eine Transaktion mit abweichendem Betrag zuzuordnen (Beispiel: Für eine Rechnung über 84.00 € mit 81.00 € PayPal darf NIEMALS eine Transaktion über 124.00 € zugeordnet werden!).
+   - Wenn in den vorliegenden Auszügen kein passender Betrag existiert, darfst du KEINE Transaktion zuordnen (matchedTransactions: [])!
+3. STATUS-KONSISTENZ:
+   - "PAID": Nur wenn der gesamte Rechnungsbetrag durch passende Zahlungen zu 100% nachgewiesen ist.
+   - "PARTIAL": Nur wenn ein echter Teilbetrag nachgewiesen ist UND noch ein echter Restbetrag > 0.00 € offen ist.
+   - "OPEN": Wenn kein Geldeingang nachgewiesen werden konnte.
+   - Setze NIEMALS "status": "PARTIAL", wenn kein Restbetrag mehr offen ist!
 
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur pures JSON):
 {
   "status": "PAID" | "PARTIAL" | "OPEN",
   "headline": "Kurze, klare Überschrift",
-  "explanation": "Detaillierte, professionelle Begründung (2-4 Sätze) auf Deutsch mit Nennung von Gast/Firma, Daten, Zahlart (z.B. PayPal) und noch offenem Restbetrag.",
+  "explanation": "Detaillierte, professionelle Begründung (2-4 Sätze) auf Deutsch mit Nennung von Gast/Firma, Daten, Zahlart und noch offenem Restbetrag.",
   "confidence": 0.95,
   "suggestedComment": "Vorschlag für das Notizfeld",
   "matchedTransactions": [
@@ -193,18 +197,66 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur 
       }
 
       const parsed = JSON.parse(text);
+
+      // --- SERVER-SIDE VALIDATION & GUARD RAILS ---
+      let validatedMatches: any[] = [];
+      if (Array.isArray(parsed.matchedTransactions)) {
+        validatedMatches = parsed.matchedTransactions.filter((tx: any) => {
+          const txAmount = Number(tx.amount || 0);
+          // An individual match cannot exceed the invoice amount
+          if (txAmount > invAmount + 0.05) {
+            console.warn(`[AI Validation] Rejecting match ${tx.id}: amount ${txAmount} exceeds invoice amount ${invAmount}`);
+            return false;
+          }
+          // Must exist in candidate list with matching amount
+          if (tx.type === 'CARD') {
+            const exists = cardPayments.some(c => c.id === Number(tx.id) && Math.abs(Number(c.amount) - txAmount) < 0.05);
+            if (!exists) console.warn(`[AI Validation] Rejecting CARD match ${tx.id}: not found in candidates or amount mismatch`);
+            return exists;
+          }
+          if (tx.type === 'BANK') {
+            const exists = bankTransactions.some(b => b.id === Number(tx.id) && Math.abs(Number(b.amount) - txAmount) < 0.05);
+            if (!exists) console.warn(`[AI Validation] Rejecting BANK match ${tx.id}: not found in candidates or amount mismatch`);
+            return exists;
+          }
+          if (tx.type === 'BOOKING') {
+            const exists = bookingPayments.some(bp => bp.id === Number(tx.id) && Math.abs(Number(bp.amount) - txAmount) < 0.05);
+            if (!exists) console.warn(`[AI Validation] Rejecting BOOKING match ${tx.id}: not found in candidates or amount mismatch`);
+            return exists;
+          }
+          return false;
+        });
+      }
+
+      // Total of validated matches cannot exceed invoice amount
+      let validMatchedSum = validatedMatches.reduce((s, t) => s + Number(t.amount || 0), 0);
+      if (validMatchedSum > invAmount + 0.05) {
+        validatedMatches = [];
+        validMatchedSum = 0;
+      }
+
+      // Enforce status consistency
+      let finalStatus: 'PAID' | 'PARTIAL' | 'OPEN' = parsed.status || 'OPEN';
+      if (validMatchedSum === 0) {
+        finalStatus = 'OPEN';
+      } else if (Math.abs(validMatchedSum - invAmount) < 0.05) {
+        finalStatus = 'PAID';
+      } else if (validMatchedSum < invAmount) {
+        finalStatus = 'PARTIAL';
+      }
+
       return {
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
         recipient: inv.recipient,
         amount: invAmount,
         date: formattedDate,
-        status: parsed.status || 'OPEN',
+        status: finalStatus,
         headline: parsed.headline || 'KI-Prüfung abgeschlossen',
         explanation: parsed.explanation || '',
         confidence: parsed.confidence || 0.9,
         suggestedComment: parsed.suggestedComment || '',
-        matchedTransactions: parsed.matchedTransactions || [],
+        matchedTransactions: validatedMatches,
         geminiUsed: true,
       };
     } catch (e: any) {

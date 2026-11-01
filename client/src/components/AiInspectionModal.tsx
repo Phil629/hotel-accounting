@@ -99,30 +99,42 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
 
   // Financial calculations
   const totalAmount = Number(suggestion?.amount ?? invoice?.amount ?? 0);
-  const matchedSum = (suggestion?.matchedTransactions || []).reduce(
+
+  // Reject any match whose amount exceeds total invoice amount
+  const validMatchedTransactions = (suggestion?.matchedTransactions || []).filter(
+    t => Number(t.amount || 0) <= totalAmount + 0.05
+  );
+
+  const matchedSum = validMatchedTransactions.reduce(
     (sum, t) => sum + Number(t.amount || 0),
     0
   );
 
+  let effectiveStatus: 'PAID' | 'PARTIAL' | 'OPEN' = suggestion?.status || 'OPEN';
   let paidAmount = 0;
   if (suggestion) {
-    if (suggestion.status === 'PAID') {
-      paidAmount = totalAmount;
-    } else if (suggestion.status === 'OPEN') {
+    if (validMatchedTransactions.length === 0) {
       paidAmount = 0;
+      effectiveStatus = 'OPEN';
+    } else if (suggestion.status === 'PAID' || Math.abs(matchedSum - totalAmount) < 0.05) {
+      paidAmount = totalAmount;
+      effectiveStatus = 'PAID';
     } else {
-      paidAmount = matchedSum > 0 ? matchedSum : (Number(invoice?.amountPaid) || 0);
-      if (paidAmount > totalAmount) paidAmount = totalAmount;
+      paidAmount = Math.min(totalAmount, matchedSum > 0 ? matchedSum : (Number(invoice?.amountPaid) || 0));
+      effectiveStatus = 'PARTIAL';
     }
   }
 
   const openAmount = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
+  if (openAmount <= 0.01 && paidAmount > 0) {
+    effectiveStatus = 'PAID';
+  }
   const paidPct = totalAmount > 0 ? Math.min(100, Math.max(0, Math.round((paidAmount / totalAmount) * 100))) : 0;
   const openPct = 100 - paidPct;
 
   // Unmatched PMS payments (for detailed breakdown)
   const openPmsPayments = (invoice.pmsPayments || []).filter((p: any) => {
-    return !suggestion?.matchedTransactions?.some(m => 
+    return !validMatchedTransactions.some(m => 
       Math.abs(Number(m.amount) - Number(p.amount)) < 0.01
     );
   });
@@ -148,22 +160,22 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
     setApplying(true);
     setError(null);
 
-    const actualPaid = suggestion.status === 'PAID'
-      ? suggestion.amount
+    const actualPaid = effectiveStatus === 'PAID'
+      ? totalAmount
       : (matchedSum > 0 ? matchedSum : (Number(invoice.amountPaid) || 0));
 
     try {
       await api.applyAiMatch(invoice.id, {
-        status: suggestion.status,
+        status: effectiveStatus,
         amountPaid: actualPaid,
         aiComment: commentInput,
-        matches: suggestion.matchedTransactions.map(t => ({
+        matches: validMatchedTransactions.map(t => ({
           type: t.type,
           id: t.id,
         })),
       });
 
-      onApplied(invoice.id, suggestion.status, actualPaid, commentInput);
+      onApplied(invoice.id, effectiveStatus, actualPaid, commentInput);
       onClose();
     } catch (e: any) {
       setError(e.message || 'Konnte den Vorschlag nicht übernehmen.');
@@ -320,29 +332,29 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'space-between',
-                backgroundColor: suggestion.status === 'PAID' ? '#f0fdf4' : suggestion.status === 'PARTIAL' ? '#fffbeb' : '#fef2f2',
-                border: `1.5px solid ${suggestion.status === 'PAID' ? '#86efac' : suggestion.status === 'PARTIAL' ? '#fde68a' : '#fecaca'}`,
+                backgroundColor: effectiveStatus === 'PAID' ? '#f0fdf4' : effectiveStatus === 'PARTIAL' ? '#fffbeb' : '#fef2f2',
+                border: `1.5px solid ${effectiveStatus === 'PAID' ? '#86efac' : effectiveStatus === 'PARTIAL' ? '#fde68a' : '#fecaca'}`,
               }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                   <span style={{ fontSize: '1.4rem' }}>
-                    {suggestion.status === 'PAID' ? '🟢' : suggestion.status === 'PARTIAL' ? '🟡' : '🔴'}
+                    {effectiveStatus === 'PAID' ? '🟢' : effectiveStatus === 'PARTIAL' ? '🟡' : '🔴'}
                   </span>
                   <div>
                     <div style={{
                       fontWeight: 700,
                       fontSize: '0.96rem',
-                      color: suggestion.status === 'PAID' ? '#166534' : suggestion.status === 'PARTIAL' ? '#92400e' : '#991b1b',
+                      color: effectiveStatus === 'PAID' ? '#166534' : effectiveStatus === 'PARTIAL' ? '#92400e' : '#991b1b',
                     }}>
-                      {suggestion.status === 'PAID'
+                      {effectiveStatus === 'PAID'
                         ? 'VOLLSTÄNDIG BEZAHLT'
-                        : suggestion.status === 'PARTIAL'
+                        : effectiveStatus === 'PARTIAL'
                         ? 'TEILWEISE BEZAHLT – RESTBETRAG AUSSTEHEND'
                         : 'RECHNUNG VOLLSTÄNDIG OFFEN'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      {suggestion.status === 'PAID'
+                      {effectiveStatus === 'PAID'
                         ? 'Rechnung ist vollkommen ausgeglichen.'
-                        : suggestion.status === 'PARTIAL'
+                        : effectiveStatus === 'PARTIAL'
                         ? `${paidAmount.toFixed(2)} € nachgewiesen, ${openAmount.toFixed(2)} € noch offen.`
                         : 'Bisher kein entsprechender Geldeingang gefunden.'}
                       {' • '}Konfidenz: {Math.round(suggestion.confidence * 100)}% {suggestion.geminiUsed && '• Mit Gemini AI'}
@@ -462,12 +474,12 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                     alignItems: 'center',
                     gap: '6px',
                   }}>
-                    <span>✓</span> Erhaltene & zugeordnete Zahlungen ({suggestion.matchedTransactions?.length || (suggestion.status === 'PAID' ? 1 : 0)}):
+                    <span>✓</span> Erhaltene & zugeordnete Zahlungen ({validMatchedTransactions.length || (effectiveStatus === 'PAID' ? 1 : 0)}):
                   </div>
 
-                  {suggestion.matchedTransactions && suggestion.matchedTransactions.length > 0 ? (
+                  {validMatchedTransactions.length > 0 ? (
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {suggestion.matchedTransactions.map((tx, idx) => (
+                      {validMatchedTransactions.map((tx, idx) => (
                         <div
                           key={idx}
                           style={{
@@ -506,7 +518,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                         </div>
                       ))}
                     </div>
-                  ) : suggestion.status === 'PAID' ? (
+                  ) : effectiveStatus === 'PAID' ? (
                     <div style={{ fontSize: '0.84rem', color: '#166534', fontWeight: 600 }}>
                       Gesamter Betrag von {totalAmount.toFixed(2)} € ist vollständig bezahlt.
                     </div>
@@ -741,7 +753,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
             Schließen
           </button>
 
-          {suggestion && suggestion.status === 'OPEN' && (
+          {suggestion && effectiveStatus === 'OPEN' && (
             <button
               type="button"
               onClick={handleSaveCommentOnly}
@@ -764,7 +776,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
             </button>
           )}
 
-          {suggestion && suggestion.status === 'PARTIAL' && (
+          {suggestion && effectiveStatus === 'PARTIAL' && (
             <button
               type="button"
               onClick={handleApply}
@@ -790,7 +802,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
             </button>
           )}
 
-          {suggestion && suggestion.status === 'PAID' && (
+          {suggestion && effectiveStatus === 'PAID' && (
             <button
               type="button"
               onClick={handleApply}
