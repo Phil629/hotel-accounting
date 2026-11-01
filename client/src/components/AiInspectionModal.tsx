@@ -132,12 +132,44 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
   const paidPct = totalAmount > 0 ? Math.min(100, Math.max(0, Math.round((paidAmount / totalAmount) * 100))) : 0;
   const openPct = 100 - paidPct;
 
-  // Unmatched PMS payments (for detailed breakdown)
-  const openPmsPayments = (invoice.pmsPayments || []).filter((p: any) => {
-    return !validMatchedTransactions.some(m => 
-      Math.abs(Number(m.amount) - Number(p.amount)) < 0.01
-    );
-  });
+  // Group PMS payments by payment type and calculate net amounts (netting out Stornos)
+  const pmsNetByType: Record<string, number> = {};
+  for (const p of (invoice.pmsPayments || [])) {
+    const type = p.paymentType || 'Zahlung';
+    pmsNetByType[type] = (pmsNetByType[type] || 0) + Number(p.amount || 0);
+  }
+
+  // Deduct already validated matches from these expectations
+  const remainingExpectedByType: { type: string; amount: number }[] = [];
+  for (const [type, netExpected] of Object.entries(pmsNetByType)) {
+    if (netExpected <= 0.01) continue; // Ignore net zero or storno positions
+    const covered = validMatchedTransactions
+      .filter(m => {
+        const d = (m.details || '').toLowerCase();
+        const t = (m.type || '').toLowerCase();
+        const pType = type.toLowerCase();
+        return d.includes(pType)
+          || (pType.includes('mastercard') && (d.includes('mastercard') || t === 'card'))
+          || (pType.includes('visa') && (d.includes('visa') || t === 'card'))
+          || (pType.includes('girocard') && (d.includes('girocard') || t === 'card'))
+          || (pType.includes('booking') && (d.includes('booking') || t === 'booking'))
+          || (pType.includes('paypal') && (d.includes('paypal') || t === 'card'));
+      })
+      .reduce((sum, m) => sum + Number(m.amount || 0), 0);
+
+    const stillNeeded = Math.max(0, Math.round((netExpected - covered) * 100) / 100);
+    if (stillNeeded > 0.01) {
+      remainingExpectedByType.push({ type, amount: stillNeeded });
+    }
+  }
+
+  // Fallback if openAmount remains but no specific PMS breakdown left
+  if (remainingExpectedByType.length === 0 && openAmount > 0.01) {
+    remainingExpectedByType.push({
+      type: invoice.paymentType || 'Offene Forderung',
+      amount: openAmount,
+    });
+  }
 
   const handleSaveCommentOnly = async () => {
     if (!invoice) return;
@@ -552,8 +584,8 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                     </div>
                     
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {openPmsPayments.length > 0 ? (
-                        openPmsPayments.map((p: any, idx: number) => (
+                      {remainingExpectedByType.length > 0 ? (
+                        remainingExpectedByType.map((item, idx: number) => (
                           <div
                             key={idx}
                             style={{
@@ -568,14 +600,14 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                           >
                             <div>
                               <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#991b1b' }}>
-                                Erwartet laut Buchung: {fixEncoding(p.paymentType)}
+                                Erwartet laut Buchung: {fixEncoding(item.type)}
                               </div>
                               <div style={{ fontSize: '0.72rem', color: '#7f1d1d' }}>
                                 🔍 Kein entsprechender Zahlungseingang auf dem Konto gefunden
                               </div>
                             </div>
                             <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626', whiteSpace: 'nowrap', marginLeft: '12px' }}>
-                              - {Number(p.amount).toFixed(2)} €
+                              - {item.amount.toFixed(2)} €
                             </div>
                           </div>
                         ))
