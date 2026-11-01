@@ -84,18 +84,22 @@ export const Dashboard: React.FC = () => {
     const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, comment: string) => {
         setInvoices(prev => prev.map(inv => {
             if (inv.id === invoiceId) {
+                const isReconciled = status !== 'OPEN';
                 return {
                     ...inv,
-                    isReconciled: true,
-                    manualStatus: true,
+                    isReconciled: isReconciled,
+                    manualStatus: isReconciled,
                     status: status,
-                    amountPaid: amount,
+                    amountPaid: isReconciled ? amount : inv.amountPaid,
                     comment: comment || inv.comment,
                 };
             }
             return inv;
         }));
-        setToast({ message: 'Rechnung erfolgreich per KI abgeglichen!', type: 'success' });
+        setToast({ 
+            message: status === 'OPEN' ? 'Notiz zur offenen Rechnung gespeichert!' : 'Rechnung erfolgreich per KI abgeglichen!', 
+            type: 'success' 
+        });
     };
     const [importStatus, setImportStatus] = useState<Record<string, any[]>>({});
     const [showDeleteModal, setShowDeleteModal] = useState(false);

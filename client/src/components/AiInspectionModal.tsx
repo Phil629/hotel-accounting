@@ -77,6 +77,22 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
     localStorage.setItem('GEMINI_API_KEY', newKey);
   };
 
+  const handleSaveCommentOnly = async () => {
+    if (!invoice) return;
+    setApplying(true);
+    setError(null);
+
+    try {
+      await api.updateComment(invoice.id, commentInput);
+      onApplied(invoice.id, 'OPEN', Number(invoice.amount), commentInput);
+      onClose();
+    } catch (e: any) {
+      setError(e.message || 'Konnte den Kommentar nicht speichern.');
+    } finally {
+      setApplying(false);
+    }
+  };
+
   const handleApply = async () => {
     if (!suggestion) return;
     setApplying(true);
@@ -430,6 +446,29 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
           >
             Schließen
           </button>
+
+          {suggestion && suggestion.status === 'OPEN' && (
+            <button
+              type="button"
+              onClick={handleSaveCommentOnly}
+              disabled={applying}
+              style={{
+                padding: '8px 18px',
+                borderRadius: '8px',
+                border: '1px solid #cbd5e1',
+                background: '#f8fafc',
+                color: '#334155',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                cursor: applying ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              {applying ? 'Wird gespeichert...' : '💾 Notiz übernehmen'}
+            </button>
+          )}
 
           {suggestion && suggestion.status !== 'OPEN' && (
             <button
