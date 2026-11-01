@@ -22,29 +22,6 @@ export interface AiMatchSuggestion {
   geminiUsed: boolean;
 }
 
-function toCents(amount: any): number {
-  return Math.round(Number(amount) * 100);
-}
-
-const STOP_WORDS = new Set([
-  'das', 'der', 'die', 'und', 'von', 'zur', 'zum', 'gmbh', 'hotel', 'service', 
-  'consulting', 'produktion', 'haftungsbeschraenkt', 'haus', 'berlin', 'agentur', 'ev', 'ag', 'co', 'kg'
-]);
-
-function getSignificantNameParts(name: string): string[] {
-  return (name || '')
-    .toLowerCase()
-    .replace(/[,;.\-_/]/g, ' ')
-    .split(/\s+/)
-    .filter(p => p.length >= 3 && !STOP_WORDS.has(p));
-}
-
-function matchesNameWord(text: string, parts: string[]): boolean {
-  if (!text || parts.length === 0) return false;
-  const words = new Set(text.toLowerCase().replace(/[,;.\-_/]/g, ' ').split(/\s+/));
-  return parts.some(p => words.has(p));
-}
-
 export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?: string): Promise<AiMatchSuggestion> {
   const inv = await prisma.invoice.findUnique({
     where: { id: invoiceId },
@@ -69,193 +46,130 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
   const invAmount = Number(inv.amount);
   const formattedDate = invDate.toLocaleDateString('de-DE');
 
-  // Extract hotel guest names from reservations if available
-  let guestNames: string[] = [];
-  if (inv.roomReservations && inv.roomReservations.length > 0) {
-    guestNames = inv.roomReservations.map(r => r.guestName);
-  }
+  // Also query room reservations around this date/guest if not directly linked
+  const relatedReservations = await prisma.roomReservation.findMany({
+    where: {
+      OR: [
+        { invoiceId: inv.id },
+        { checkOut: inv.invoiceDate },
+      ],
+    },
+    take: 10,
+  });
 
-  // ─── 1. Calculate already matched amounts and remaining balance ────────────
-  let alreadyMatchedCents = 0;
-  const existingMatchedItems: string[] = [];
-
-  for (const m of inv.matches) {
-    if (m.matchType === 'SUGGESTED_MISMATCH') continue;
-    if (m.cardPayment) {
-      alreadyMatchedCents += toCents(m.cardPayment.amount);
-      existingMatchedItems.push(`${Number(m.cardPayment.amount).toFixed(2)} € per ${m.cardPayment.cardType} (Terminal #${m.cardPayment.id})`);
-    } else if (m.bankTransaction) {
-      alreadyMatchedCents += toCents(m.bankTransaction.amount);
-      existingMatchedItems.push(`${Number(m.bankTransaction.amount).toFixed(2)} € per Banküberweisung (${new Date(m.bankTransaction.bookingDate).toLocaleDateString('de-DE')})`);
-    } else if (m.bookingPayment) {
-      alreadyMatchedCents += toCents(m.bookingPayment.amount);
-      existingMatchedItems.push(`${Number(m.bookingPayment.amount).toFixed(2)} € per Booking.com (${m.bookingPayment.guestName})`);
-    }
-  }
-
-  const remainingCents = Math.max(0, toCents(invAmount) - alreadyMatchedCents);
-  const remainingAmount = remainingCents / 100;
-
-  // If already 100% matched
-  if (remainingCents <= 1) {
-    return {
-      invoiceId: inv.id,
-      invoiceNumber: inv.invoiceNumber,
-      recipient: inv.recipient,
-      amount: invAmount,
-      date: formattedDate,
-      status: 'PAID',
-      headline: 'Bereits vollständig ausgeglichen',
-      explanation: `Die Rechnung über ${invAmount.toFixed(2)} € ist bereits vollständig durch zugeordnete Zahlungen abgedeckt: ${existingMatchedItems.join(', ')}.`,
-      confidence: 1.0,
-      suggestedComment: 'Bereits vollständig ausgeglichen',
-      matchedTransactions: [],
-      geminiUsed: false,
-    };
-  }
-
-  // Determine what payment method is expected for the UNMATCHED portion
-  const pTypeLower = (inv.paymentType || '').toLowerCase();
-  
-  // Inspect PMS payments to see which sub-payments remain open
-  let openPmsType = '';
-  if (inv.pmsPayments && inv.pmsPayments.length > 0) {
-    const unmatchedPms = inv.pmsPayments.filter(p => {
-      const pCents = toCents(p.amount);
-      const isMatched = inv.matches.some(m => {
-        if (m.cardPayment && toCents(m.cardPayment.amount) === pCents) return true;
-        if (m.bankTransaction && toCents(m.bankTransaction.amount) === pCents) return true;
-        if (m.bookingPayment && toCents(m.bookingPayment.amount) === pCents) return true;
-        return false;
-      });
-      return !isMatched;
-    });
-    if (unmatchedPms.length > 0) {
-      openPmsType = unmatchedPms.map(p => `${p.paymentType} (${Number(p.amount).toFixed(2)} €)`).join(', ');
-    }
-  }
-
-  const isBankExpected = openPmsType.toLowerCase().includes('bank') || openPmsType.toLowerCase().includes('überweisung') || pTypeLower.includes('bank') || pTypeLower.includes('überweisung') || pTypeLower.includes('rechnung');
-  const isBookingExpected = openPmsType.toLowerCase().includes('booking') || pTypeLower.includes('booking');
-  const isCardExpected = openPmsType.toLowerCase().includes('karte') || openPmsType.toLowerCase().includes('ec') || openPmsType.toLowerCase().includes('terminal') || pTypeLower.includes('karte') || pTypeLower.includes('ec');
-
-  // Candidate Search
+  // Candidate Bank transactions (-30 days to +45 days)
   const bStart = new Date(invDate);
   bStart.setDate(bStart.getDate() - 30);
   const bEnd = new Date(invDate);
-  bEnd.setDate(bEnd.getDate() + 60);
+  bEnd.setDate(bEnd.getDate() + 45);
 
-  const candidateBanks = await prisma.bankTransaction.findMany({
+  const bankTransactions = await prisma.bankTransaction.findMany({
     where: {
       bookingDate: { gte: bStart, lte: bEnd },
-      OR: [
-        { matches: { none: {} } },
-        { matches: { some: { invoiceId: inv.id } } },
-      ],
     },
     orderBy: { bookingDate: 'asc' },
+    take: 100,
   });
 
+  // Candidate Card transactions (-2 days to +3 days)
   const cStart = new Date(invDate);
   cStart.setDate(cStart.getDate() - 2);
   const cEnd = new Date(invDate);
   cEnd.setDate(cEnd.getDate() + 3);
 
-  const candidateCards = await prisma.cardPayment.findMany({
+  const cardPayments = await prisma.cardPayment.findMany({
     where: {
       transactionDate: { gte: cStart, lte: cEnd },
-      OR: [
-        { matches: { none: {} } },
-        { matches: { some: { invoiceId: inv.id } } },
-      ],
     },
     orderBy: { transactionDate: 'asc' },
+    take: 60,
   });
 
+  // Candidate Booking transactions (-60 days to +30 days)
   const bpStart = new Date(invDate);
-  bpStart.setDate(bpStart.getDate() - 90);
+  bpStart.setDate(bpStart.getDate() - 60);
   const bpEnd = new Date(invDate);
   bpEnd.setDate(bpEnd.getDate() + 30);
 
-  const allNames = [...getSignificantNameParts(inv.recipient), ...guestNames.flatMap(g => getSignificantNameParts(g))];
-
-  const candidateBookings = await prisma.bookingPayment.findMany({
+  const bookingPayments = await prisma.bookingPayment.findMany({
     where: {
-      OR: [
-        ...(allNames.length > 0 ? allNames.map(part => ({ guestName: { contains: part, mode: 'insensitive' as const } })) : []),
-        {
-          AND: [
-            { amount: { in: [Number(inv.amount), remainingAmount] } },
-            { payoutDate: { gte: bpStart, lte: bpEnd } },
-          ],
-        },
-      ],
+      payoutDate: { gte: bpStart, lte: bpEnd },
     },
     orderBy: { payoutDate: 'desc' },
+    take: 40,
   });
 
-  // Rank candidate banks
-  const scoredBanks = candidateBanks.map(b => {
-    let score = 0;
-    const bCents = toCents(b.amount);
-    if (Math.abs(bCents - remainingCents) <= 1) score += 100;
-    else if (Math.abs(bCents - toCents(invAmount)) <= 1) score += 80;
-    if (allNames.some(p => `${b.senderReceiver || ''} ${b.description || ''}`.toLowerCase().includes(p))) score += 50;
-    if ((b.description || '').includes(inv.invoiceNumber)) score += 150;
-    const dayDiff = Math.abs((b.bookingDate.getTime() - invDate.getTime()) / 86400000);
-    score -= dayDiff;
-    return { b, score };
-  }).sort((a, b) => b.score - a.score).map(x => x.b);
+  // Existing database matches
+  const alreadyMatched = inv.matches.map(m => {
+    if (m.cardPayment) return `ID #${m.cardPayment.id}: ${Number(m.cardPayment.amount).toFixed(2)} € per ${m.cardPayment.cardType} am ${new Date(m.cardPayment.transactionDate).toLocaleDateString('de-DE')}`;
+    if (m.bankTransaction) return `ID #${m.bankTransaction.id}: ${Number(m.bankTransaction.amount).toFixed(2)} € per Banküberweisung am ${new Date(m.bankTransaction.bookingDate).toLocaleDateString('de-DE')} (Absender: ${m.bankTransaction.senderReceiver || 'Unbekannt'})`;
+    if (m.bookingPayment) return `ID #${m.bookingPayment.id}: ${Number(m.bookingPayment.amount).toFixed(2)} € per Booking.com für Gast '${m.bookingPayment.guestName || 'Unbekannt'}' (Ref: ${m.bookingPayment.referenceNumber})`;
+    return 'Unbekannt';
+  });
 
-  // ─── 2. Optional Gemini Analysis ───────────────────────────────────────────
-  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  const prompt = `Du bist ein hochentwickelter, professioneller Buchhaltungs-Auditor für ein deutsches Hotel.
+Deine Aufgabe ist es, diese Hotelrechnung völlig eigenständig und neutral anhand der vorliegenden Rohdaten zu prüfen – genau wie ein menschlicher Buchhalter.
 
-  if (apiKey && apiKey !== 'NO_KEY') {
-    try {
-      const prompt = `Du bist ein erfahrener Buchhaltungs-Auditor für ein deutsches Hotel.
-Prüfe die folgende offene Hotel-Rechnung auf den Cent genau.
-
-RECHNUNGSDATEN:
+--- RECHNUNGSDATEN ---
 - Rechnungsnummer: ${inv.invoiceNumber}
-- Datum: ${formattedDate}
-- Empfänger / Firma: ${inv.recipient}
-${guestNames.length > 0 ? `- Hotelgast: ${guestNames.join(', ')}` : ''}
-- Gesamter Rechnungsbetrag: ${invAmount.toFixed(2)} €
-- Bereits verbucht: ${(alreadyMatchedCents / 100).toFixed(2)} € (${existingMatchedItems.join(', ') || 'Keine'})
-- NOCH OFFENER RESTBETRAG: ${remainingAmount.toFixed(2)} €
-- Erwartete Zahlart für den Restbetrag laut PMS: ${openPmsType || inv.paymentType}
+- Rechnungsdatum: ${formattedDate}
+- Rechnungsempfänger / Gast: ${inv.recipient}
+- Rechnungs-Gesamtbetrag: ${invAmount.toFixed(2)} €
+- Zahlart laut Hotelsoftware (PMS): ${inv.paymentType}
+- Bisher im System zugeordnete Zahlungen: ${alreadyMatched.length > 0 ? alreadyMatched.join(', ') : 'Noch keine'}
 
-BANK-ÜBERWEISUNGEN IM ZEITFENSTER:
-${scoredBanks.slice(0, 8).map(b => `- ID ${b.id}: ${Number(b.amount).toFixed(2)} € am ${new Date(b.bookingDate).toLocaleDateString('de-DE')} von '${b.senderReceiver || 'Unbekannt'}' | Zweck: '${b.description || ''}'`).join('\n') || 'Keine relevanten Überweisungen'}
+--- AUFSCHLÜSSELUNG AUS DER HOTELSOFTWARE (PMS PAYMENTS) ---
+${inv.pmsPayments.map(p => `- ${Number(p.amount).toFixed(2)} € gebucht als '${p.paymentType}' am ${new Date(p.paymentDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine PMS-Zahlungspositionen vorhanden'}
 
-${!isBankExpected ? `KARTENZAHLUNGEN (TERMINAL):
-${candidateCards.slice(0, 10).map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine ungematchten Kartenzahlungen'}` : 'Kartenzahlungen: Nicht relevant, da Zahlart Banküberweisung ist.'}
+--- ZIMMERRESERVIERUNGEN AM ABREISETAG ---
+${relatedReservations.map(r => `- Gast: '${r.guestName}', Zimmer ${r.roomName}, Logis: ${Number(r.price).toFixed(2)} €, CityTax: ${Number(r.cityTax || 0).toFixed(2)} €`).join('\n') || 'Keine Zimmerreservierungen gefunden'}
 
-${isBookingExpected ? `BOOKING.COM AUSZAHLUNGEN:
-${candidateBookings.slice(0, 5).map(bp => `- ID ${bp.id}: ${Number(bp.amount).toFixed(2)} € für Gast '${bp.guestName}' (Ref: ${bp.referenceNumber}, Auszahlung: ${bp.payoutDate ? new Date(bp.payoutDate).toLocaleDateString('de-DE') : 'k.A.'})`).join('\n') || 'Keine relevanten Booking-Auszahlungen'}` : ''}
+--- BANKÜBERWEISUNGEN IM ZEITRAUM (AUSZUG) ---
+${bankTransactions.map(b => `- ID ${b.id}: ${Number(b.amount).toFixed(2)} € am ${new Date(b.bookingDate).toLocaleDateString('de-DE')} von '${b.senderReceiver || 'Unbekannt'}' | Verwendungszweck: '${b.description || ''}'`).join('\n') || 'Keine Banküberweisungen'}
 
-WICHTIGE AUDIT-REGELN:
-1. Wenn Zahlart Banküberweisung ist: Nur Überweisungen mit passendem Betrag (${remainingAmount.toFixed(2)} € oder ${invAmount.toFixed(2)} €) zuordnen. Wenn keine Überweisung existiert -> Status MUSS "OPEN" sein! NIEMALS Kartensplits für Banküberweisungen vorschlagen!
-2. Wenn Zahlart Booking.com ist: Name des Gastes und Auszahlungsbetrag abgleichen.
-3. Wenn Zahlart Karte ist: Nur Einzelzahlung oder echter 2-Karten-Split am selben Tag.
-4. Sei präzise und nenne immer den genauen Status.
+--- KARTENZAHLUNGEN AM TERMINAL IM ZEITRAUM ---
+${cardPayments.map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine Kartenzahlungen'}
 
-Antworte AUSSCHLIESSLICH als gültiges JSON im folgenden Format (ohne Markdown):
+--- BOOKING.COM AUSZAHLUNGEN IM ZEITRAUM ---
+${bookingPayments.map(bp => `- ID ${bp.id}: ${Number(bp.amount).toFixed(2)} € für Gast '${bp.guestName || 'Unbekannt'}' (Auszahlung: ${bp.payoutDate ? new Date(bp.payoutDate).toLocaleDateString('de-DE') : 'k.A.'}, Ref: ${bp.referenceNumber})`).join('\n') || 'Keine Booking-Auszahlungen'}
+
+--- DEINE PRÜFUNGSAUFGABE ---
+1. Analysiere den Sachverhalt logisch:
+   - Welcher Teil der Rechnung ist bereits gedeckt (z.B. CityTax vor Ort gezahlt)?
+   - Welcher Betrag steht noch offen und wie sollte dieser bezahlt werden (z.B. Firmenüberweisung per Bank)?
+   - Gibt es in den Banküberweisungen, Kartenzahlungen oder Booking-Auszahlungen eine echte, zweifelsfreie Zahlung für diese offene Forderung?
+2. Strenge Vorsicht bei Zuordnungen:
+   - Ordne eine Zahlung NUR zu, wenn Betrag und Kontext (Name, Firma, Gast, Rechnungsnummer oder klares Zahlart-Schema) zusammenpassen.
+   - Wenn eine Firmenrechnung per Überweisung bezahlt werden soll und auf dem Bankkonto kein passendes Geld eingegangen ist, ist die Rechnung "OPEN" (oder "PARTIAL", falls die CityTax schon bezahlt war). Erfinde NIEMALS zufällige Kartenzahlungen von anderen Gästen!
+3. Wenn die Rechnung nicht vollständig bezahlt ist: Setze "status": "OPEN" oder "PARTIAL", nenne den genauen offenen Restbetrag und erkläre dem Nutzer verständlich auf Deutsch, was geprüft wurde und was noch fehlt.
+
+Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur pures JSON):
 {
   "status": "PAID" | "PARTIAL" | "OPEN",
-  "headline": "Prägnante Überschrift",
-  "explanation": "Detaillierte, professionelle Begründung auf Deutsch.",
+  "headline": "Kurze, klare Überschrift",
+  "explanation": "Detaillierte, professionelle Begründung (2-4 Sätze) auf Deutsch mit Nennung von Gast/Firma, Daten und noch offenem Restbetrag.",
   "confidence": 0.95,
-  "suggestedComment": "Kurzer Vorschlag für das Notizfeld",
+  "suggestedComment": "Vorschlag für das Notizfeld",
   "matchedTransactions": [
     { "type": "BANK" | "CARD" | "BOOKING", "id": 12345, "amount": 154.00, "date": "22.09.2026", "details": "Überweisung von ..." }
   ]
 }`;
 
-      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-latest:generateContent?key=${apiKey}`, {
+  const apiKey = customApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error('Kein Gemini API-Key konfiguriert. Bitte gib deinen API-Key im Modal ein oder hinterlege GEMINI_API_KEY in der Serverumgebung.');
+  }
+
+  // We call gemini-flash-lite-latest (fast, generous quota) with fallback to gemini-flash-latest
+  const candidateModels = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+  let lastError: string | null = null;
+
+  for (const model of candidateModels) {
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
           generationConfig: {
@@ -265,200 +179,42 @@ Antworte AUSSCHLIESSLICH als gültiges JSON im folgenden Format (ohne Markdown):
         }),
       });
 
-      if (res.ok) {
-        const json = await res.json();
-        const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          const parsed = JSON.parse(text);
-          return {
-            invoiceId: inv.id,
-            invoiceNumber: inv.invoiceNumber,
-            recipient: inv.recipient,
-            amount: invAmount,
-            date: formattedDate,
-            status: parsed.status || 'OPEN',
-            headline: parsed.headline || 'Prüfung abgeschlossen',
-            explanation: parsed.explanation || '',
-            confidence: parsed.confidence || 0.9,
-            suggestedComment: parsed.suggestedComment || '',
-            matchedTransactions: parsed.matchedTransactions || [],
-            geminiUsed: true,
-          };
-        }
+      if (!res.ok) {
+        const errorText = await res.text();
+        console.error(`Gemini API error with model ${model}:`, res.status, errorText);
+        lastError = `Gemini API Fehler (${res.status}): ${errorText.slice(0, 150)}`;
+        continue;
       }
-    } catch (geminiError) {
-      console.log('Gemini call skipped/failed, falling back to deterministic auditor:', (geminiError as Error).message);
-    }
-  }
 
-  // ─── 3. Deterministic Domain Auditor (Fallback) ───────────────────────────
-
-  // A. Bank Transfer Expected
-  if (isBankExpected) {
-    const exactBank = candidateBanks.find(b => {
-      const bCents = toCents(b.amount);
-      const amountMatches = Math.abs(bCents - remainingCents) <= 1 || Math.abs(bCents - toCents(invAmount)) <= 1;
-      const textMatches = allNames.some(p => `${b.senderReceiver || ''} ${b.description || ''}`.toLowerCase().includes(p)) || (b.description || '').includes(inv.invoiceNumber);
-      return amountMatches && textMatches;
-    }) || candidateBanks.find(b => {
-      return Math.abs(toCents(b.amount) - remainingCents) <= 1 && (b.description || '').includes(inv.invoiceNumber);
-    });
-
-    if (exactBank) {
-      const bDate = new Date(exactBank.bookingDate).toLocaleDateString('de-DE');
-      return {
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        recipient: inv.recipient,
-        amount: invAmount,
-        date: formattedDate,
-        status: 'PAID',
-        headline: `Banküberweisung über ${Number(exactBank.amount).toFixed(2)} € gefunden`,
-        explanation: `Am ${bDate} ging eine passende Überweisung von '${exactBank.senderReceiver || 'Unbekannt'}' über ${Number(exactBank.amount).toFixed(2)} € ein (Verwendungszweck: '${exactBank.description || ''}').`,
-        confidence: 0.95,
-        suggestedComment: `Banküberweisung von ${exactBank.senderReceiver || 'Kunde'} (${bDate})`,
-        matchedTransactions: [{
-          type: 'BANK',
-          id: exactBank.id,
-          amount: Number(exactBank.amount),
-          date: bDate,
-          details: `Absender: ${exactBank.senderReceiver} | Zweck: ${exactBank.description}`
-        }],
-        geminiUsed: false
-      };
-    }
-
-    // Genuinely OPEN
-    return {
-      invoiceId: inv.id,
-      invoiceNumber: inv.invoiceNumber,
-      recipient: inv.recipient,
-      amount: invAmount,
-      date: formattedDate,
-      status: 'OPEN',
-      headline: 'Kein Geldeingang auf dem Bankkonto gefunden (Offen)',
-      explanation: existingMatchedItems.length > 0 
-        ? `${existingMatchedItems.join(', ')} wurde bereits verbucht. Für den verbleibenden Rechnungsbetrag von ${remainingAmount.toFixed(2)} € (Zahlart: Banküberweisung) ist bisher keine Überweisung von '${inv.recipient}' eingegangen. Die Rechnung ist berechtigt offen.`
-        : `Für die Rechnung über ${invAmount.toFixed(2)} € (Zahlart: Banküberweisung) konnte kein passender Geldeingang von '${inv.recipient}' auf den Hotel-Bankkonten festgestellt werden. Die Rechnung ist berechtigt offen.`,
-      confidence: 0.95,
-      suggestedComment: `Offene Forderung: Überweisung über ${remainingAmount.toFixed(2)} € steht noch aus`,
-      matchedTransactions: [],
-      geminiUsed: false
-    };
-  }
-
-  // B. Booking.com Expected
-  if (isBookingExpected) {
-    const bookingMatch = candidateBookings.find(b => {
-      const amountMatches = Math.abs(toCents(b.amount) - remainingCents) <= 1 || Math.abs(toCents(b.amount) - toCents(invAmount)) <= 1;
-      const nameMatches = allNames.length > 0 && matchesNameWord(b.guestName || '', allNames);
-      return amountMatches && nameMatches;
-    }) || candidateBookings.find(b => Math.abs(toCents(b.amount) - remainingCents) <= 1);
-
-    if (bookingMatch) {
-      const pDate = bookingMatch.payoutDate ? new Date(bookingMatch.payoutDate).toLocaleDateString('de-DE') : 'k.A.';
-      return {
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        recipient: inv.recipient,
-        amount: invAmount,
-        date: formattedDate,
-        status: 'PAID',
-        headline: `Booking.com Auszahlung (${Number(bookingMatch.amount).toFixed(2)} €) zugeordnet`,
-        explanation: `Passende Booking.com-Auszahlung für Gast '${bookingMatch.guestName}' über ${Number(bookingMatch.amount).toFixed(2)} € gefunden (Auszahlungsdatum: ${pDate}, Ref: ${bookingMatch.referenceNumber}).`,
-        confidence: 0.98,
-        suggestedComment: `Booking.com Auszahlung #${bookingMatch.id} (${pDate})`,
-        matchedTransactions: [{
-          type: 'BOOKING',
-          id: bookingMatch.id,
-          amount: Number(bookingMatch.amount),
-          date: pDate,
-          details: `Booking.com Auszahlung für '${bookingMatch.guestName}' (Ref: ${bookingMatch.referenceNumber})`
-        }],
-        geminiUsed: false
-      };
-    }
-  }
-
-  // C. Card Expected
-  if (isCardExpected) {
-    // Single card
-    const exactCard = candidateCards.find(c => Math.abs(toCents(c.amount) - remainingCents) <= 1);
-    if (exactCard) {
-      const cDate = new Date(exactCard.transactionDate).toLocaleDateString('de-DE');
-      return {
-        invoiceId: inv.id,
-        invoiceNumber: inv.invoiceNumber,
-        recipient: inv.recipient,
-        amount: invAmount,
-        date: formattedDate,
-        status: 'PAID',
-        headline: `Kartenzahlung über ${Number(exactCard.amount).toFixed(2)} € gefunden`,
-        explanation: `Am Nexi-Terminal wurde am ${cDate} eine passende Zahlung über ${Number(exactCard.amount).toFixed(2)} € (${exactCard.cardType}) erfasst.`,
-        confidence: 0.95,
-        suggestedComment: `Kartenzahlung ${Number(exactCard.amount).toFixed(2)} € (${exactCard.cardType})`,
-        matchedTransactions: [{
-          type: 'CARD',
-          id: exactCard.id,
-          amount: Number(exactCard.amount),
-          date: cDate,
-          details: `${exactCard.cardType} am Terminal (ID #${exactCard.id})`
-        }],
-        geminiUsed: false
-      };
-    }
-
-    // Legitimate 2-card split on same day
-    const cardsByDate: Record<string, typeof candidateCards> = {};
-    for (const c of candidateCards) {
-      const k = c.transactionDate.toISOString().split('T')[0];
-      if (!cardsByDate[k]) cardsByDate[k] = [];
-      cardsByDate[k].push(c);
-    }
-    for (const d of Object.keys(cardsByDate)) {
-      const dayCards = cardsByDate[d];
-      for (let i = 0; i < dayCards.length; i++) {
-        for (let j = i + 1; j < dayCards.length; j++) {
-          if (Math.abs(toCents(dayCards[i].amount) + toCents(dayCards[j].amount) - remainingCents) <= 1) {
-            const splitDate = new Date(d).toLocaleDateString('de-DE');
-            return {
-              invoiceId: inv.id,
-              invoiceNumber: inv.invoiceNumber,
-              recipient: inv.recipient,
-              amount: invAmount,
-              date: formattedDate,
-              status: 'PAID',
-              headline: `Kartensplit (${Number(dayCards[i].amount).toFixed(2)} € + ${Number(dayCards[j].amount).toFixed(2)} €)`,
-              explanation: `Am Nexi-Terminal wurden am ${splitDate} zwei Zahlungen erfasst, die zusammen exakt den offenen Betrag von ${remainingAmount.toFixed(2)} € ergeben: ${Number(dayCards[i].amount).toFixed(2)} € (${dayCards[i].cardType}) + ${Number(dayCards[j].amount).toFixed(2)} € (${dayCards[j].cardType}).`,
-              confidence: 0.92,
-              suggestedComment: `Terminal-Split: ${Number(dayCards[i].amount).toFixed(2)} € + ${Number(dayCards[j].amount).toFixed(2)} €`,
-              matchedTransactions: [
-                { type: 'CARD', id: dayCards[i].id, amount: Number(dayCards[i].amount), date: splitDate, details: `${dayCards[i].cardType} (ID #${dayCards[i].id})` },
-                { type: 'CARD', id: dayCards[j].id, amount: Number(dayCards[j].amount), date: splitDate, details: `${dayCards[j].cardType} (ID #${dayCards[j].id})` }
-              ],
-              geminiUsed: false
-            };
-          }
-        }
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!text) {
+        throw new Error('Gemini hat eine leere Antwort geliefert.');
       }
+
+      const parsed = JSON.parse(text);
+      return {
+        invoiceId: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        recipient: inv.recipient,
+        amount: invAmount,
+        date: formattedDate,
+        status: parsed.status || 'OPEN',
+        headline: parsed.headline || 'KI-Prüfung abgeschlossen',
+        explanation: parsed.explanation || '',
+        confidence: parsed.confidence || 0.9,
+        suggestedComment: parsed.suggestedComment || '',
+        matchedTransactions: parsed.matchedTransactions || [],
+        geminiUsed: true,
+      };
+    } catch (e: any) {
+      console.error(`Failed to call ${model}:`, e);
+      lastError = e.message;
     }
   }
 
-  // D. Default -> OPEN
-  return {
-    invoiceId: inv.id,
-    invoiceNumber: inv.invoiceNumber,
-    recipient: inv.recipient,
-    amount: invAmount,
-    date: formattedDate,
-    status: 'OPEN',
-    headline: 'Keine passenden Zahlungseingänge gefunden (Rechnung offen)',
-    explanation: `Weder auf den Bankkonten noch bei Kartenzahlungen konnte ein passender Zahlungseingang über ${remainingAmount.toFixed(2)} € für '${inv.recipient}' ermittelt werden. Die Forderung ist berechtigt offen.`,
-    confidence: 0.90,
-    suggestedComment: 'Rechnung noch offen - kein Zahlungseingang gefunden',
-    matchedTransactions: [],
-    geminiUsed: false
-  };
+  // If Gemini failed on all models, throw error instead of faking results with heuristics!
+  throw new Error(`Die KI-Prüfung konnte nicht durchgeführt werden: ${lastError || 'Keine Antwort von Gemini'}.`);
 }
 
 export async function applyAiMatch(invoiceId: number, data: {
@@ -473,7 +229,7 @@ export async function applyAiMatch(invoiceId: number, data: {
   const inv = await prisma.invoice.findUnique({ where: { id: invoiceId } });
   if (!inv) throw new Error(`Rechnung mit ID ${invoiceId} nicht gefunden`);
 
-  const isReconciled = data.status !== 'OPEN';
+  const isReconciled = data.status === 'PAID';
   const targetAmountPaid = data.amountPaid !== undefined ? data.amountPaid : Number(inv.amount);
 
   return await prisma.$transaction(async (tx) => {
