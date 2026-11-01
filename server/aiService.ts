@@ -57,18 +57,40 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
     take: 10,
   });
 
+  // Candidate target amounts
+  const targetAmounts = [invAmount, ...inv.pmsPayments.map(p => Number(p.amount))].filter(a => a > 0);
+
+  // Extract recipient keywords for search (min length 4, no generic words)
+  const recipientKeywords = (inv.recipient || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9äöüß]/g, ' ')
+    .split(/\s+/)
+    .filter(w => w.length >= 4 && !['gmbh', 'hotel', 'herr', 'frau', 'prof', 'dr', 'und', 'der', 'die', 'das', 'fuer', 'für'].includes(w));
+
   // Candidate Bank transactions (-30 days to +45 days)
   const bStart = new Date(invDate);
   bStart.setDate(bStart.getDate() - 30);
   const bEnd = new Date(invDate);
   bEnd.setDate(bEnd.getDate() + 45);
 
-  const bankTransactions = await prisma.bankTransaction.findMany({
+  const rawBankTransactions = await prisma.bankTransaction.findMany({
     where: {
       bookingDate: { gte: bStart, lte: bEnd },
+      // Exclude transactions already matched to OTHER invoices
+      matches: { none: { invoiceId: { not: inv.id } } },
     },
     orderBy: { bookingDate: 'asc' },
     take: 100,
+  });
+
+  // Pre-filter bank transactions: must either match target amount or contain keyword/invoiceNumber
+  const bankTransactions = rawBankTransactions.filter(b => {
+    const amt = Number(b.amount);
+    const amtMatch = targetAmounts.some(ta => Math.abs(amt - ta) < 0.05);
+    if (amtMatch) return true;
+    const text = `${b.senderReceiver || ''} ${b.description || ''}`.toLowerCase();
+    if (text.includes(inv.invoiceNumber.toLowerCase())) return true;
+    return recipientKeywords.some(kw => text.includes(kw));
   });
 
   // Candidate Card & PayPal transactions (-3 days to +3 days)
@@ -77,12 +99,21 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
   const cEnd = new Date(invDate);
   cEnd.setDate(cEnd.getDate() + 3);
 
-  const cardPayments = await prisma.cardPayment.findMany({
+  const rawCardPayments = await prisma.cardPayment.findMany({
     where: {
       transactionDate: { gte: cStart, lte: cEnd },
+      // Exclude card payments already matched to OTHER invoices
+      matches: { none: { invoiceId: { not: inv.id } } },
     },
     orderBy: { transactionDate: 'asc' },
     take: 100,
+  });
+
+  // Pre-filter card/PayPal payments: MUST match invoice amount or a PMS component amount!
+  // (Card transactions have no recipient text, so matching by exact amount is essential)
+  const cardPayments = rawCardPayments.filter(c => {
+    const amt = Number(c.amount);
+    return targetAmounts.some(ta => Math.abs(amt - ta) < 0.05);
   });
 
   // Candidate Booking transactions (-60 days to +30 days)
@@ -91,12 +122,20 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
   const bpEnd = new Date(invDate);
   bpEnd.setDate(bpEnd.getDate() + 30);
 
-  const bookingPayments = await prisma.bookingPayment.findMany({
+  const rawBookingPayments = await prisma.bookingPayment.findMany({
     where: {
       payoutDate: { gte: bpStart, lte: bpEnd },
+      matches: { none: { invoiceId: { not: inv.id } } },
     },
     orderBy: { payoutDate: 'desc' },
     take: 40,
+  });
+
+  const bookingPayments = rawBookingPayments.filter(bp => {
+    const amt = Number(bp.amount);
+    if (targetAmounts.some(ta => Math.abs(amt - ta) < 0.05)) return true;
+    const gName = (bp.guestName || '').toLowerCase();
+    return recipientKeywords.some(kw => gName.includes(kw));
   });
 
   // Existing database matches
@@ -164,8 +203,8 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur 
     throw new Error('Kein Gemini API-Key konfiguriert. Bitte gib deinen API-Key im Modal ein oder hinterlege GEMINI_API_KEY in der Serverumgebung.');
   }
 
-  // We call gemini-flash-lite-latest (fast, generous quota) with fallback to gemini-flash-latest
-  const candidateModels = ['gemini-flash-lite-latest', 'gemini-flash-latest'];
+  // We prefer gemini-3.5-flash (high intelligence & reasoning) with fallback to gemini-flash-lite-latest
+  const candidateModels = ['gemini-3.5-flash', 'gemini-flash-lite-latest'];
   let lastError: string | null = null;
 
   for (const model of candidateModels) {
@@ -245,6 +284,34 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur 
         finalStatus = 'PARTIAL';
       }
 
+      let finalHeadline = parsed.headline || 'KI-Prüfung abgeschlossen';
+      let finalExplanation = parsed.explanation || '';
+      let finalComment = parsed.suggestedComment || '';
+
+      // If status is OPEN, sanitize any hallucinated "paid" text
+      if (finalStatus === 'OPEN') {
+        const headlineLower = finalHeadline.toLowerCase();
+        if (headlineLower.includes('bezahlt') || headlineLower.includes('beglichen') || headlineLower.includes('ausgeglichen')) {
+          finalHeadline = 'Rechnung vollständig offen';
+        }
+        const explLower = finalExplanation.toLowerCase();
+        if (explLower.includes('beglichen') || explLower.includes('vollständig bezahlt') || (validatedMatches.length === 0 && (parsed.matchedTransactions?.length || 0) > 0)) {
+          finalExplanation = `Laut Hotelsoftware wurde die Zahlung als '${inv.paymentType}' erwartet. In den vorliegenden Bank-, Karten- und Booking-Daten konnte jedoch kein entsprechender Geldeingang über ${invAmount.toFixed(2)} € nachgewiesen werden. Der Rechnungsbetrag ist daher weiterhin vollständig offen.`;
+          finalComment = `Offen: Kein Geldeingang über ${invAmount.toFixed(2)} € (${inv.paymentType}) nachgewiesen.`;
+        }
+      } else if (finalStatus === 'PARTIAL') {
+        const remaining = Math.max(0, Math.round((invAmount - validMatchedSum) * 100) / 100);
+        const headlineLower = finalHeadline.toLowerCase();
+        if (headlineLower.includes('vollständig') || headlineLower.includes('beglichen') || headlineLower.includes('ausgeglichen')) {
+          finalHeadline = `Teilzahlung nachgewiesen – ${remaining.toFixed(2)} € Restbetrag offen`;
+        }
+        const explLower = finalExplanation.toLowerCase();
+        if (explLower.includes('vollständig ausgeglichen') || explLower.includes('vollständig bezahlt') || explLower.includes('kein offener betrag') || explLower.includes('0.00 € noch offen') || explLower.includes('restbetrag von 0.00 €')) {
+          finalExplanation = `Für diese Rechnung wurden ${validMatchedSum.toFixed(2)} € nachgewiesen. Der verbleibende Restbetrag von ${remaining.toFixed(2)} € steht jedoch noch aus und konnte in den Auszügen nicht nachgewiesen werden.`;
+          finalComment = `Teilzahlung über ${validMatchedSum.toFixed(2)} € zugeordnet. Restbetrag von ${remaining.toFixed(2)} € noch offen.`;
+        }
+      }
+
       return {
         invoiceId: inv.id,
         invoiceNumber: inv.invoiceNumber,
@@ -252,10 +319,10 @@ Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur 
         amount: invAmount,
         date: formattedDate,
         status: finalStatus,
-        headline: parsed.headline || 'KI-Prüfung abgeschlossen',
-        explanation: parsed.explanation || '',
+        headline: finalHeadline,
+        explanation: finalExplanation,
         confidence: parsed.confidence || 0.9,
-        suggestedComment: parsed.suggestedComment || '',
+        suggestedComment: finalComment,
         matchedTransactions: validatedMatches,
         geminiUsed: true,
       };
