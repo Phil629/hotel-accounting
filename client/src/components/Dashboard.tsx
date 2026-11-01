@@ -82,22 +82,26 @@ export const Dashboard: React.FC = () => {
     const [aiModalInvoice, setAiModalInvoice] = useState<Invoice | null>(null);
 
     const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, comment: string) => {
+        const isReconciled = status === 'PAID';
         setInvoices(prev => prev.map(inv => {
             if (inv.id === invoiceId) {
-                const isReconciled = status !== 'OPEN';
                 return {
                     ...inv,
                     isReconciled: isReconciled,
                     manualStatus: isReconciled,
                     status: status,
-                    amountPaid: isReconciled ? amount : inv.amountPaid,
+                    amountPaid: status === 'OPEN' ? inv.amountPaid : amount,
                     comment: comment || inv.comment,
                 };
             }
             return inv;
         }));
         setToast({ 
-            message: status === 'OPEN' ? 'Notiz zur offenen Rechnung gespeichert!' : 'Rechnung erfolgreich per KI abgeglichen!', 
+            message: status === 'PAID'
+                ? 'Rechnung vollständig bezahlt & abgehakt!'
+                : status === 'PARTIAL'
+                ? `Teilzahlung (${amount.toFixed(2)} €) erfasst – Restbetrag bleibt offen!`
+                : 'Notiz zur offenen Rechnung gespeichert!', 
             type: 'success' 
         });
     };

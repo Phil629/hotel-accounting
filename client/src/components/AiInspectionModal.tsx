@@ -105,10 +105,14 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
     setApplying(true);
     setError(null);
 
+    const actualPaid = suggestion.status === 'PAID'
+      ? suggestion.amount
+      : suggestion.matchedTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+
     try {
       await api.applyAiMatch(invoice.id, {
         status: suggestion.status,
-        amountPaid: suggestion.amount,
+        amountPaid: actualPaid,
         comment: commentInput,
         matches: suggestion.matchedTransactions.map(t => ({
           type: t.type,
@@ -116,7 +120,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
         })),
       });
 
-      onApplied(invoice.id, suggestion.status, suggestion.amount, commentInput);
+      onApplied(invoice.id, suggestion.status, actualPaid, commentInput);
       onClose();
     } catch (e: any) {
       setError(e.message || 'Konnte den Vorschlag nicht übernehmen.');
@@ -501,7 +505,31 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
             </button>
           )}
 
-          {suggestion && suggestion.status !== 'OPEN' && (
+          {suggestion && suggestion.status === 'PARTIAL' && (
+            <button
+              type="button"
+              onClick={handleApply}
+              disabled={applying}
+              style={{
+                padding: '8px 20px',
+                borderRadius: '8px',
+                border: 'none',
+                background: '#d97706',
+                color: '#ffffff',
+                fontSize: '0.88rem',
+                fontWeight: 600,
+                cursor: applying ? 'not-allowed' : 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 2px 4px rgba(217, 119, 6, 0.25)',
+              }}
+            >
+              {applying ? 'Wird gespeichert...' : '✓ Teilzahlung erfassen (Rechnung bleibt offen)'}
+            </button>
+          )}
+
+          {suggestion && suggestion.status === 'PAID' && (
             <button
               type="button"
               onClick={handleApply}
@@ -521,7 +549,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
               }}
             >
-              {applying ? 'Wird gespeichert...' : '✓ Vorschlag übernehmen & Rechnung abhaken'}
+              {applying ? 'Wird gespeichert...' : '✓ Vollständig bezahlt & abhaken'}
             </button>
           )}
         </div>

@@ -230,7 +230,9 @@ export async function applyAiMatch(invoiceId: number, data: {
   if (!inv) throw new Error(`Rechnung mit ID ${invoiceId} nicht gefunden`);
 
   const isReconciled = data.status === 'PAID';
-  const targetAmountPaid = data.amountPaid !== undefined ? data.amountPaid : Number(inv.amount);
+  const targetAmountPaid = data.amountPaid !== undefined 
+    ? data.amountPaid 
+    : (data.status === 'PAID' ? Number(inv.amount) : inv.amountPaid);
 
   return await prisma.$transaction(async (tx) => {
     const updated = await tx.invoice.update({
@@ -240,7 +242,7 @@ export async function applyAiMatch(invoiceId: number, data: {
         reconciledDate: isReconciled ? new Date() : null,
         manualStatus: isReconciled,
         status: data.status || 'PAID',
-        amountPaid: isReconciled ? targetAmountPaid : inv.amountPaid,
+        amountPaid: targetAmountPaid,
         comment: data.comment !== undefined ? data.comment : inv.comment,
       },
     });
