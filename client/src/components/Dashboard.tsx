@@ -911,12 +911,25 @@ export const Dashboard: React.FC = () => {
     );
 };
 
+const fixEncoding = (str?: string | null): string => {
+    if (!str) return '';
+    return str
+        .replace(/Ã¼/g, 'ü')
+        .replace(/Ã¤/g, 'ä')
+        .replace(/Ã¶/g, 'ö')
+        .replace(/ÃŸ/g, 'ß')
+        .replace(/Ãœ/g, 'Ü')
+        .replace(/Ã„/g, 'Ä')
+        .replace(/Ã–/g, 'Ö')
+        .replace(/â‚¬/g, '€');
+};
+
 const getPaymentTypes = (inv: Invoice) => {
-        if (inv.pmsPayments && inv.pmsPayments.length > 0) {
-            return inv.pmsPayments.map(p => `${p.paymentType} (${Number(p.amount).toFixed(2)} €)`).join(' + ');
-        }
-        return inv.paymentType;
-    };
+    if (inv.pmsPayments && inv.pmsPayments.length > 0) {
+        return inv.pmsPayments.map(p => `${fixEncoding(p.paymentType)} (${Number(p.amount).toFixed(2)} €)`).join(' + ');
+    }
+    return fixEncoding(inv.paymentType);
+};
 
 interface InvoiceRowProps {
     inv: Invoice;

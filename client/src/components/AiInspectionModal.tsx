@@ -31,6 +31,19 @@ interface AiInspectionModalProps {
   onApplied: (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, comment: string) => void;
 }
 
+export const fixEncoding = (str?: string | null): string => {
+  if (!str) return '';
+  return str
+    .replace(/Ã¼/g, 'ü')
+    .replace(/Ã¤/g, 'ä')
+    .replace(/Ã¶/g, 'ö')
+    .replace(/ÃŸ/g, 'ß')
+    .replace(/Ãœ/g, 'Ü')
+    .replace(/Ã„/g, 'Ä')
+    .replace(/Ã–/g, 'Ö')
+    .replace(/â‚¬/g, '€');
+};
+
 export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
   invoice,
   isOpen,
@@ -84,6 +97,36 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
 
   if (!isOpen || !invoice) return null;
 
+  // Financial calculations
+  const totalAmount = Number(suggestion?.amount ?? invoice?.amount ?? 0);
+  const matchedSum = (suggestion?.matchedTransactions || []).reduce(
+    (sum, t) => sum + Number(t.amount || 0),
+    0
+  );
+
+  let paidAmount = 0;
+  if (suggestion) {
+    if (suggestion.status === 'PAID') {
+      paidAmount = totalAmount;
+    } else if (suggestion.status === 'OPEN') {
+      paidAmount = 0;
+    } else {
+      paidAmount = matchedSum > 0 ? matchedSum : (Number(invoice?.amountPaid) || 0);
+      if (paidAmount > totalAmount) paidAmount = totalAmount;
+    }
+  }
+
+  const openAmount = Math.max(0, Math.round((totalAmount - paidAmount) * 100) / 100);
+  const paidPct = totalAmount > 0 ? Math.min(100, Math.max(0, Math.round((paidAmount / totalAmount) * 100))) : 0;
+  const openPct = 100 - paidPct;
+
+  // Unmatched PMS payments (for detailed breakdown)
+  const openPmsPayments = (invoice.pmsPayments || []).filter((p: any) => {
+    return !suggestion?.matchedTransactions?.some(m => 
+      Math.abs(Number(m.amount) - Number(p.amount)) < 0.01
+    );
+  });
+
   const handleSaveCommentOnly = async () => {
     if (!invoice) return;
     setApplying(true);
@@ -91,7 +134,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
 
     try {
       await api.updateComment(invoice.id, undefined, commentInput);
-      onApplied(invoice.id, 'OPEN', Number(invoice.amount), commentInput);
+      onApplied(invoice.id, 'OPEN', Number(invoice.amountPaid) || 0, commentInput);
       onClose();
     } catch (e: any) {
       setError(e.message || 'Konnte die KI-Notiz nicht speichern.');
@@ -107,7 +150,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
 
     const actualPaid = suggestion.status === 'PAID'
       ? suggestion.amount
-      : suggestion.matchedTransactions.reduce((sum, t) => sum + Number(t.amount || 0), 0);
+      : (matchedSum > 0 ? matchedSum : (Number(invoice.amountPaid) || 0));
 
     try {
       await api.applyAiMatch(invoice.id, {
@@ -148,17 +191,17 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
         background: '#ffffff',
         borderRadius: '16px',
         width: '100%',
-        maxWidth: '620px',
-        maxHeight: '90vh',
+        maxWidth: '680px',
+        maxHeight: '92vh',
         display: 'flex',
         flexDirection: 'column',
         boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
         overflow: 'hidden',
-        border: '1px solid #e2e8f0',
+        border: '1px solid #cbd5e1',
       }}>
         {/* Header */}
         <div style={{
-          padding: '20px 24px',
+          padding: '18px 24px',
           borderBottom: '1px solid #f1f5f9',
           display: 'flex',
           justifyContent: 'space-between',
@@ -173,7 +216,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
               </h3>
             </div>
             <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
-              <strong>{invoice.recipient}</strong> • {Number(invoice.amount).toFixed(2)} € • {new Date(invoice.invoiceDate).toLocaleDateString('de-DE')}
+              <strong>{fixEncoding(invoice.recipient)}</strong> • {Number(invoice.amount).toFixed(2)} € • {new Date(invoice.invoiceDate).toLocaleDateString('de-DE')}
             </div>
           </div>
           <button
@@ -194,7 +237,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
         </div>
 
         {/* Content */}
-        <div style={{ padding: '24px', overflowY: 'auto', flex: 1 }}>
+        <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '16px' }}>
           {loading && (
             <div style={{ textAlign: 'center', padding: '40px 20px' }}>
               <div style={{
@@ -223,7 +266,6 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
               padding: '16px 20px',
               color: '#991b1b',
               fontSize: '0.9rem',
-              marginBottom: '16px',
             }}>
               <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '6px' }}>
                 Fehler: {error}
@@ -270,10 +312,10 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
           )}
 
           {!loading && suggestion && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              {/* Status Banner */}
+            <>
+              {/* 1. Status Banner */}
               <div style={{
-                padding: '14px 16px',
+                padding: '12px 16px',
                 borderRadius: '10px',
                 display: 'flex',
                 alignItems: 'center',
@@ -288,97 +330,311 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                   <div>
                     <div style={{
                       fontWeight: 700,
-                      fontSize: '0.95rem',
+                      fontSize: '0.96rem',
                       color: suggestion.status === 'PAID' ? '#166534' : suggestion.status === 'PARTIAL' ? '#92400e' : '#991b1b',
                     }}>
                       {suggestion.status === 'PAID'
-                        ? 'VOLLSTÄNDIG BEZAHLT GEFUNDEN'
+                        ? 'VOLLSTÄNDIG BEZAHLT'
                         : suggestion.status === 'PARTIAL'
-                        ? 'TEILZAHLUNG GEFUNDEN'
-                        : 'KEIN GELDEINGANG GEFUNDEN (OFFEN)'}
+                        ? 'TEILWEISE BEZAHLT – RESTBETRAG AUSSTEHEND'
+                        : 'RECHNUNG VOLLSTÄNDIG OFFEN'}
                     </div>
                     <div style={{ fontSize: '0.8rem', color: '#64748b' }}>
-                      Konfidenz: {Math.round(suggestion.confidence * 100)}% {suggestion.geminiUsed && '• Mit Gemini AI'}
+                      {suggestion.status === 'PAID'
+                        ? 'Rechnung ist vollkommen ausgeglichen.'
+                        : suggestion.status === 'PARTIAL'
+                        ? `${paidAmount.toFixed(2)} € nachgewiesen, ${openAmount.toFixed(2)} € noch offen.`
+                        : 'Bisher kein entsprechender Geldeingang gefunden.'}
+                      {' • '}Konfidenz: {Math.round(suggestion.confidence * 100)}% {suggestion.geminiUsed && '• Mit Gemini AI'}
                     </div>
                   </div>
                 </div>
               </div>
 
-              {/* Headline & Explanation */}
+              {/* 2. Visual 3-Card Summary Grid: Gesamt / Bezahlt / Offen */}
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(3, 1fr)',
+                gap: '12px',
+              }}>
+                {/* Gesamt */}
+                <div style={{
+                  background: '#f8fafc',
+                  border: '1.5px solid #e2e8f0',
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    Gesamtbetrag
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#0f172a', margin: '4px 0 2px' }}>
+                    {totalAmount.toFixed(2)} €
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    Rechnungssumme
+                  </div>
+                </div>
+
+                {/* Bereits bezahlt */}
+                <div style={{
+                  background: paidAmount > 0 ? '#f0fdf4' : '#f8fafc',
+                  border: `1.5px solid ${paidAmount > 0 ? '#86efac' : '#e2e8f0'}`,
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: paidAmount > 0 ? '#15803d' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    ✓ Bereits bezahlt
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 800, color: paidAmount > 0 ? '#166534' : '#64748b', margin: '4px 0 2px' }}>
+                    {paidAmount.toFixed(2)} €
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: paidAmount > 0 ? '#15803d' : '#94a3b8' }}>
+                    {paidPct}% beglichen
+                  </div>
+                </div>
+
+                {/* Noch offen */}
+                <div style={{
+                  background: openAmount > 0 ? '#fef2f2' : '#f8fafc',
+                  border: `1.5px solid ${openAmount > 0 ? '#fca5a5' : '#e2e8f0'}`,
+                  borderRadius: '12px',
+                  padding: '12px 14px',
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 700, color: openAmount > 0 ? '#b91c1c' : '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                    ⚠ Noch offen
+                  </div>
+                  <div style={{ fontSize: '1.45rem', fontWeight: 800, color: openAmount > 0 ? '#dc2626' : '#64748b', margin: '4px 0 2px' }}>
+                    {openAmount.toFixed(2)} €
+                  </div>
+                  <div style={{ fontSize: '0.72rem', fontWeight: 600, color: openAmount > 0 ? '#b91c1c' : '#94a3b8' }}>
+                    {openPct}% ausstehend
+                  </div>
+                </div>
+              </div>
+
+              {/* 3. Dual-Color Split Bar */}
+              <div>
+                <div style={{
+                  height: '10px',
+                  width: '100%',
+                  backgroundColor: '#fee2e2',
+                  borderRadius: '999px',
+                  overflow: 'hidden',
+                  display: 'flex',
+                }}>
+                  <div style={{
+                    width: `${paidPct}%`,
+                    backgroundColor: '#22c55e',
+                    transition: 'width 0.3s ease',
+                  }} />
+                  <div style={{
+                    width: `${openPct}%`,
+                    backgroundColor: '#ef4444',
+                    transition: 'width 0.3s ease',
+                  }} />
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', marginTop: '4px' }}>
+                  <span style={{ color: '#16a34a', fontWeight: 600 }}>● {paidAmount.toFixed(2)} € bezahlt ({paidPct}%)</span>
+                  <span style={{ color: '#dc2626', fontWeight: 600 }}>● {openAmount.toFixed(2)} € ausstehend ({openPct}%)</span>
+                </div>
+              </div>
+
+              {/* 4. Two Clean Breakdown Sections: Paid vs Open */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Green Box: Erhaltene Zahlungen */}
+                <div style={{
+                  background: '#f0fdf4',
+                  border: '1.5px solid #bbf7d0',
+                  borderRadius: '10px',
+                  padding: '12px 16px',
+                }}>
+                  <div style={{
+                    fontSize: '0.8rem',
+                    fontWeight: 700,
+                    color: '#166534',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.04em',
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                  }}>
+                    <span>✓</span> Erhaltene & zugeordnete Zahlungen ({suggestion.matchedTransactions?.length || (suggestion.status === 'PAID' ? 1 : 0)}):
+                  </div>
+
+                  {suggestion.matchedTransactions && suggestion.matchedTransactions.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {suggestion.matchedTransactions.map((tx, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: '#ffffff',
+                            border: '1px solid #86efac',
+                            borderRadius: '8px',
+                            padding: '8px 12px',
+                            display: 'flex',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{
+                              fontSize: '0.68rem',
+                              fontWeight: 700,
+                              padding: '2px 8px',
+                              borderRadius: '999px',
+                              backgroundColor: tx.type === 'BANK' ? '#dbeafe' : tx.type === 'CARD' ? '#e0e7ff' : '#fce7f3',
+                              color: tx.type === 'BANK' ? '#1e40af' : tx.type === 'CARD' ? '#3730a3' : '#9d174d',
+                            }}>
+                              {tx.type === 'BANK' ? 'Bank' : tx.type === 'CARD' ? 'Kartenterminal' : 'Booking.com'}
+                            </span>
+                            <div>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#0f172a' }}>
+                                {tx.details}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#64748b' }}>
+                                Datum: {tx.date} • ID #{tx.id}
+                              </div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#166534', whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                            + {Number(tx.amount).toFixed(2)} €
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : suggestion.status === 'PAID' ? (
+                    <div style={{ fontSize: '0.84rem', color: '#166534', fontWeight: 600 }}>
+                      Gesamter Betrag von {totalAmount.toFixed(2)} € ist vollständig bezahlt.
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic' }}>
+                      Bisher kein Geldeingang auf Bankkonto oder Kartenterminal nachgewiesen (0,00 €).
+                    </div>
+                  )}
+                </div>
+
+                {/* Red/Amber Box: Ausstehende Forderung */}
+                {openAmount > 0 ? (
+                  <div style={{
+                    background: '#fef2f2',
+                    border: '1.5px solid #fecaca',
+                    borderRadius: '10px',
+                    padding: '12px 16px',
+                  }}>
+                    <div style={{
+                      fontSize: '0.8rem',
+                      fontWeight: 700,
+                      color: '#991b1b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                      marginBottom: '8px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                    }}>
+                      <span>⚠</span> Noch ausstehende Forderung ({openAmount.toFixed(2)} €):
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {openPmsPayments.length > 0 ? (
+                        openPmsPayments.map((p: any, idx: number) => (
+                          <div
+                            key={idx}
+                            style={{
+                              background: '#ffffff',
+                              border: '1px solid #fca5a5',
+                              borderRadius: '8px',
+                              padding: '8px 12px',
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                            }}
+                          >
+                            <div>
+                              <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#991b1b' }}>
+                                Erwartet laut Buchung: {fixEncoding(p.paymentType)}
+                              </div>
+                              <div style={{ fontSize: '0.72rem', color: '#7f1d1d' }}>
+                                🔍 Kein entsprechender Zahlungseingang auf dem Konto gefunden
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626', whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                              - {Number(p.amount).toFixed(2)} €
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{
+                          background: '#ffffff',
+                          border: '1px solid #fca5a5',
+                          borderRadius: '8px',
+                          padding: '8px 12px',
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}>
+                          <div>
+                            <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#991b1b' }}>
+                              Restforderung offen: {openAmount.toFixed(2)} €
+                            </div>
+                            <div style={{ fontSize: '0.72rem', color: '#7f1d1d' }}>
+                              🔍 Bisher kein passender Geldeingang im Bankauszug oder Terminal vorhanden
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626', whiteSpace: 'nowrap', marginLeft: '12px' }}>
+                            - {openAmount.toFixed(2)} €
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ fontSize: '0.75rem', color: '#7f1d1d', marginTop: '8px', fontWeight: 500 }}>
+                      ℹ️ Die Rechnung verbleibt im Status <strong>OFFEN / TEILZAHLUNG</strong> und wird nicht abgehakt.
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{
+                    background: '#f0fdf4',
+                    border: '1.5px solid #86efac',
+                    borderRadius: '10px',
+                    padding: '10px 14px',
+                    fontSize: '0.82rem',
+                    color: '#15803d',
+                    fontWeight: 600,
+                  }}>
+                    ✓ Keine offenen Restforderungen. Der Betrag ist zu 100% beglichen.
+                  </div>
+                )}
+              </div>
+
+              {/* 5. Detailed AI Explanation */}
               <div style={{
                 background: '#f8fafc',
                 border: '1px solid #e2e8f0',
                 borderRadius: '10px',
-                padding: '16px',
+                padding: '12px 14px',
               }}>
-                <h4 style={{ margin: '0 0 8px 0', fontSize: '0.95rem', color: '#1e293b' }}>
-                  {suggestion.headline}
-                </h4>
-                <p style={{ margin: 0, fontSize: '0.88rem', color: '#334155', lineHeight: 1.55 }}>
+                <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+                  🤖 KI-Prüfbericht ({suggestion.headline}):
+                </div>
+                <p style={{ margin: 0, fontSize: '0.84rem', color: '#334155', lineHeight: 1.5 }}>
                   {suggestion.explanation}
                 </p>
               </div>
 
-              {/* Matched Transactions List */}
-              {suggestion.matchedTransactions && suggestion.matchedTransactions.length > 0 && (
-                <div>
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px' }}>
-                    Gefundene Zahlungsnachweise ({suggestion.matchedTransactions.length}):
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    {suggestion.matchedTransactions.map((tx, idx) => (
-                      <div
-                        key={idx}
-                        style={{
-                          background: '#ffffff',
-                          border: '1px solid #cbd5e1',
-                          borderRadius: '8px',
-                          padding: '10px 14px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <span style={{
-                            fontSize: '0.7rem',
-                            fontWeight: 700,
-                            padding: '2px 8px',
-                            borderRadius: '999px',
-                            backgroundColor: tx.type === 'BANK' ? '#dbeafe' : tx.type === 'CARD' ? '#e0e7ff' : '#fce7f3',
-                            color: tx.type === 'BANK' ? '#1e40af' : tx.type === 'CARD' ? '#3730a3' : '#9d174d',
-                          }}>
-                            {tx.type === 'BANK' ? 'Bank' : tx.type === 'CARD' ? 'Kartenterminal' : 'Booking.com'}
-                          </span>
-                          <div>
-                            <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0f172a' }}>
-                              {tx.details}
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
-                              Datum: {tx.date} • ID #{tx.id}
-                            </div>
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#166534', whiteSpace: 'nowrap', marginLeft: '12px' }}>
-                          {Number(tx.amount).toFixed(2)} €
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Suggested Comment */}
+              {/* 6. Suggested Comment for the [!] badge */}
               <div>
-                <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  KI-Befund / Info-Hinweis (wird beim [!] Symbol der Rechnung hinterlegt):
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '4px' }}>
+                  📌 KI-Hinweis (wird beim gelben [!] Symbol der Rechnung hinterlegt):
                 </label>
                 <input
                   type="text"
                   value={commentInput}
                   onChange={(e) => setCommentInput(e.target.value)}
-                  placeholder="Kommentar..."
+                  placeholder="KI-Hinweis notieren..."
                   style={{
                     width: '100%',
                     padding: '8px 12px',
@@ -389,10 +645,13 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                     boxSizing: 'border-box',
                   }}
                 />
+                <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '3px' }}>
+                  💡 Dein manuelles Kommentarfeld bleibt unberührt. Dieser Text wird als Tooltip beim gelben [!] Symbol angezeigt.
+                </div>
               </div>
 
-              {/* Collapsible Gemini API Key settings */}
-              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '10px', marginTop: '4px' }}>
+              {/* 7. Collapsible Gemini API Key settings */}
+              <div style={{ borderTop: '1px solid #f1f5f9', paddingTop: '8px', marginTop: '2px' }}>
                 <button
                   type="button"
                   onClick={() => setShowKeyConfig(!showKeyConfig)}
@@ -401,7 +660,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                     border: 'none',
                     padding: 0,
                     color: '#6366f1',
-                    fontSize: '0.78rem',
+                    fontSize: '0.76rem',
                     fontWeight: 600,
                     cursor: 'pointer',
                     display: 'flex',
@@ -450,13 +709,13 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                   </div>
                 )}
               </div>
-            </div>
+            </>
           )}
         </div>
 
         {/* Footer Actions */}
         <div style={{
-          padding: '16px 24px',
+          padding: '14px 24px',
           borderTop: '1px solid #f1f5f9',
           display: 'flex',
           justifyContent: 'flex-end',
@@ -491,7 +750,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 padding: '8px 18px',
                 borderRadius: '8px',
                 border: '1px solid #cbd5e1',
-                background: '#f8fafc',
+                background: '#f1f5f9',
                 color: '#334155',
                 fontSize: '0.88rem',
                 fontWeight: 600,
@@ -501,7 +760,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 gap: '6px',
               }}
             >
-              {applying ? 'Wird gespeichert...' : '💾 Notiz übernehmen'}
+              {applying ? 'Wird gespeichert...' : '💾 KI-Hinweis [!] speichern (Rechnung bleibt offen)'}
             </button>
           )}
 
@@ -525,7 +784,9 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 boxShadow: '0 2px 4px rgba(217, 119, 6, 0.25)',
               }}
             >
-              {applying ? 'Wird gespeichert...' : '✓ Teilzahlung erfassen (Rechnung bleibt offen)'}
+              {applying
+                ? 'Wird gespeichert...'
+                : `✓ Teilzahlung (${paidAmount.toFixed(2)} €) erfassen – Rechnung bleibt mit ${openAmount.toFixed(2)} € offen`}
             </button>
           )}
 
@@ -549,7 +810,9 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                 boxShadow: '0 2px 4px rgba(22, 163, 74, 0.25)',
               }}
             >
-              {applying ? 'Wird gespeichert...' : '✓ Vollständig bezahlt & abhaken'}
+              {applying
+                ? 'Wird gespeichert...'
+                : `✓ Vollständig bezahlt (${totalAmount.toFixed(2)} €) & abhaken`}
             </button>
           )}
         </div>
