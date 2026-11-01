@@ -134,5 +134,31 @@ export const api = {
         });
         if (!res.ok) throw new Error('Failed to restore latest backup');
         return res.json();
+    },
+
+    async checkInvoiceWithAI(id: number, apiKey?: string) {
+        const res = await fetch(`${API_URL}/invoices/${id}/ai-check`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiKey })
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'KI-Prüfung fehlgeschlagen');
+        }
+        return res.json();
+    },
+
+    async applyAiMatch(id: number, data: any) {
+        const res = await fetch(`${API_URL}/invoices/${id}/ai-apply`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data)
+        });
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || 'Konnte Vorschlag nicht anwenden');
+        }
+        return res.json();
     }
 };

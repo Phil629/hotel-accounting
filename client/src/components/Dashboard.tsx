@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { api, API_URL } from '../api';
 import { Toast } from './Toast';
+import { AiInspectionModal } from './AiInspectionModal';
 import type { ToastProps } from './Toast';
 
 interface RoomReservation {
@@ -78,6 +79,24 @@ export const Dashboard: React.FC = () => {
     const [sortField, setSortField] = useState<SortField>('date');
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null);
+    const [aiModalInvoice, setAiModalInvoice] = useState<Invoice | null>(null);
+
+    const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, comment: string) => {
+        setInvoices(prev => prev.map(inv => {
+            if (inv.id === invoiceId) {
+                return {
+                    ...inv,
+                    isReconciled: true,
+                    manualStatus: true,
+                    status: status,
+                    amountPaid: amount,
+                    comment: comment || inv.comment,
+                };
+            }
+            return inv;
+        }));
+        setToast({ message: 'Rechnung erfolgreich per KI abgeglichen!', type: 'success' });
+    };
     const [importStatus, setImportStatus] = useState<Record<string, any[]>>({});
     const [showDeleteModal, setShowDeleteModal] = useState(false);
     const [selectedMonthsToDelete, setSelectedMonthsToDelete] = useState<Set<string>>(new Set());
@@ -624,6 +643,7 @@ export const Dashboard: React.FC = () => {
                                         onToggleManual={toggleManual}
                                         onCommentChange={handleCommentChange}
                                         onDunningUpdate={handleDunningUpdate}
+                                        onAiCheck={setAiModalInvoice}
                                         
                                     />
                                 ))}
@@ -780,6 +800,7 @@ export const Dashboard: React.FC = () => {
                                             onToggleManual={toggleManual}
                                             onCommentChange={handleCommentChange}
                                             onDunningUpdate={handleDunningUpdate}
+                                        onAiCheck={setAiModalInvoice}
                                             
                                         />
                                     ))}
@@ -870,6 +891,12 @@ export const Dashboard: React.FC = () => {
                 </div>
             )}
 
+            <AiInspectionModal
+                invoice={aiModalInvoice}
+                isOpen={!!aiModalInvoice}
+                onClose={() => setAiModalInvoice(null)}
+                onApplied={handleAiApplied}
+            />
             {toast && <Toast {...toast} onClose={() => setToast(null)} />}
         </div>
     );
@@ -887,9 +914,10 @@ interface InvoiceRowProps {
     onToggleManual: (id: number, currentStatus: boolean) => void;
     onCommentChange: (id: number, comment: string) => void;
     onDunningUpdate: (id: number, status: string, method: string, date: string) => void;
+    onAiCheck?: (inv: Invoice) => void;
 }
 
-const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual, onCommentChange, onDunningUpdate }) => {
+const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual, onCommentChange, onDunningUpdate, onAiCheck }) => {
     // Optimistic UI State
     const [optimisticManualStatus, setOptimisticManualStatus] = useState(inv.manualStatus);
     const [optimisticIsReconciled, setOptimisticIsReconciled] = useState(inv.isReconciled);
@@ -1103,6 +1131,31 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
                             );
                         })()}
                     </div>
+                    {(!optimisticIsReconciled && !optimisticManualStatus) && onAiCheck && (
+                        <button
+                            type="button"
+                            onClick={() => onAiCheck(inv)}
+                            style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                fontSize: '0.72rem',
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                border: '1px solid #c7d2fe',
+                                background: '#eef2ff',
+                                color: '#4338ca',
+                                cursor: 'pointer',
+                                fontWeight: 600,
+                                whiteSpace: 'nowrap',
+                                transition: 'all 0.15s ease',
+                                boxShadow: '0 1px 2px rgba(67, 56, 202, 0.08)'
+                            }}
+                            title="Rechnung per KI tiefenprüfen"
+                        >
+                            ✨ KI-Check
+                        </button>
+                    )}
                 </div>
             </td>
             <td>

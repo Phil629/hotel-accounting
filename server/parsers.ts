@@ -355,6 +355,16 @@ async function parseRechnungsbericht(filePath: string, encoding: string, delimit
                 inv.paymentType = sorted.map((e: any) => e[0]).filter(Boolean).join(' / ');
             }
             delete inv._paymentTypes;
+            // Ensure status and reconciliation are strictly based on final accumulated amount
+            if (inv.amount === 0) {
+                inv.status = 'PAID';
+                inv.isReconciled = true;
+                inv.amountPaid = 0;
+            } else {
+                inv.status = 'OPEN';
+                inv.isReconciled = false;
+                inv.amountPaid = 0;
+            }
             return inv;
         });
         await prisma.invoice.createMany({ data: batch, skipDuplicates: true });

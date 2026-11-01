@@ -9,6 +9,7 @@ import prisma from './db';
 import { processFile } from './parsers';
 import { runReconciliation } from './reconciliation';
 import { listAutoBackups, restoreLatestAutoBackup } from './backupService';
+import { investigateInvoiceWithAI, applyAiMatch } from './aiService';
 
 const app = express();
 const port = process.env.PORT || 3010;
