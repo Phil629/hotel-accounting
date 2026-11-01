@@ -47,14 +47,22 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
   const [apiKey, setApiKey] = useState(() => localStorage.getItem('GEMINI_API_KEY') || '');
   const [showKeyConfig, setShowKeyConfig] = useState(false);
 
-  const runInvestigation = async () => {
+  const handleSaveApiKey = (newKey: string) => {
+    const trimmed = newKey.trim();
+    setApiKey(trimmed);
+    localStorage.setItem('GEMINI_API_KEY', trimmed);
+  };
+
+  const runInvestigation = async (overrideKey?: string) => {
     if (!invoice) return;
     setLoading(true);
     setError(null);
     setSuggestion(null);
 
+    const effectiveKey = (typeof overrideKey === 'string' ? overrideKey : apiKey).trim();
+
     try {
-      const res = await api.checkInvoiceWithAI(invoice.id, apiKey || undefined);
+      const res = await api.checkInvoiceWithAI(invoice.id, effectiveKey || undefined);
       setSuggestion(res);
       setCommentInput(res.suggestedComment || '');
     } catch (e: any) {
@@ -75,11 +83,6 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
   }, [isOpen, invoice?.id]);
 
   if (!isOpen || !invoice) return null;
-
-  const handleSaveApiKey = (newKey: string) => {
-    setApiKey(newKey);
-    localStorage.setItem('GEMINI_API_KEY', newKey);
-  };
 
   const handleSaveCommentOnly = async () => {
     if (!invoice) return;
@@ -211,28 +214,52 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
           {error && (
             <div style={{
               background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: '8px',
-              padding: '12px 16px',
+              border: '1.5px solid #fecaca',
+              borderRadius: '12px',
+              padding: '16px 20px',
               color: '#991b1b',
               fontSize: '0.9rem',
               marginBottom: '16px',
             }}>
-              <strong>Fehler:</strong> {error}
-              <div style={{ marginTop: '8px' }}>
-                <button
-                  onClick={runInvestigation}
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', marginBottom: '6px' }}>
+                Fehler: {error}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#7f1d1d', marginTop: '6px', marginBottom: '12px', lineHeight: 1.4 }}>
+                Füge hier deinen Google Gemini API-Key ein, um die direkte KI-Prüfung zu starten:
+              </div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <input
+                  type="text"
+                  placeholder="API-Key hier einfügen (AQ.Ab8...)"
+                  value={apiKey}
+                  onChange={(e) => handleSaveApiKey(e.target.value)}
                   style={{
-                    background: '#ef4444',
+                    flex: 1,
+                    padding: '8px 12px',
+                    fontSize: '0.88rem',
+                    border: '1px solid #cbd5e1',
+                    borderRadius: '8px',
+                    background: '#ffffff',
+                    color: '#0f172a',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => runInvestigation(apiKey)}
+                  style={{
+                    background: '#4f46e5',
                     color: 'white',
                     border: 'none',
-                    padding: '4px 10px',
-                    borderRadius: '4px',
-                    fontSize: '0.8rem',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    fontSize: '0.88rem',
+                    fontWeight: 600,
                     cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    boxShadow: '0 1px 3px rgba(79, 70, 229, 0.3)',
                   }}
                 >
-                  Erneut versuchen
+                  Key speichern & Prüfen
                 </button>
               </div>
             </div>
@@ -401,7 +428,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                       />
                       <button
                         type="button"
-                        onClick={runInvestigation}
+                        onClick={() => runInvestigation(apiKey)}
                         style={{
                           background: '#4f46e5',
                           color: 'white',
