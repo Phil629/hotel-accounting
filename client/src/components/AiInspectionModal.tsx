@@ -58,7 +58,11 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
       setSuggestion(res);
       setCommentInput(res.suggestedComment || '');
     } catch (e: any) {
-      setError(e.message || 'Die KI-Prüfung konnte nicht durchgeführt werden.');
+      const msg = e.message || 'Die KI-Prüfung konnte nicht durchgeführt werden.';
+      setError(msg);
+      if (msg.toLowerCase().includes('api-key') || msg.toLowerCase().includes('api_key')) {
+        setShowKeyConfig(true);
+      }
     } finally {
       setLoading(false);
     }
