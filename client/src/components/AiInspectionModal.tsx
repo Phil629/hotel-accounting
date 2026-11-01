@@ -486,10 +486,10 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                               fontWeight: 700,
                               padding: '2px 8px',
                               borderRadius: '999px',
-                              backgroundColor: tx.type === 'BANK' ? '#dbeafe' : tx.type === 'CARD' ? '#e0e7ff' : '#fce7f3',
-                              color: tx.type === 'BANK' ? '#1e40af' : tx.type === 'CARD' ? '#3730a3' : '#9d174d',
+                              backgroundColor: tx.type === 'BANK' ? '#dbeafe' : tx.details?.toLowerCase().includes('paypal') ? '#e0f2fe' : tx.type === 'CARD' ? '#e0e7ff' : '#fce7f3',
+                              color: tx.type === 'BANK' ? '#1e40af' : tx.details?.toLowerCase().includes('paypal') ? '#0284c7' : tx.type === 'CARD' ? '#3730a3' : '#9d174d',
                             }}>
-                              {tx.type === 'BANK' ? 'Bank' : tx.type === 'CARD' ? 'Kartenterminal' : 'Booking.com'}
+                              {tx.type === 'BANK' ? 'Bank' : tx.details?.toLowerCase().includes('paypal') ? 'PayPal' : tx.type === 'CARD' ? 'Kartenterminal' : 'Booking.com'}
                             </span>
                             <div>
                               <div style={{ fontSize: '0.84rem', fontWeight: 600, color: '#0f172a' }}>
@@ -512,7 +512,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                     </div>
                   ) : (
                     <div style={{ fontSize: '0.82rem', color: '#64748b', fontStyle: 'italic' }}>
-                      Bisher kein Geldeingang auf Bankkonto oder Kartenterminal nachgewiesen (0,00 €).
+                      Bisher kein Geldeingang auf Bankkonto, Kartenterminal oder PayPal nachgewiesen (0,00 €).
                     </div>
                   )}
                 </div>
@@ -582,7 +582,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
                               Restforderung offen: {openAmount.toFixed(2)} €
                             </div>
                             <div style={{ fontSize: '0.72rem', color: '#7f1d1d' }}>
-                              🔍 Bisher kein passender Geldeingang im Bankauszug oder Terminal vorhanden
+                              🔍 Bisher kein passender Geldeingang im Bankauszug, Terminal oder PayPal vorhanden
                             </div>
                           </div>
                           <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#dc2626', whiteSpace: 'nowrap', marginLeft: '12px' }}>

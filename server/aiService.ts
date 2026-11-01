@@ -71,9 +71,9 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
     take: 100,
   });
 
-  // Candidate Card transactions (-2 days to +3 days)
+  // Candidate Card & PayPal transactions (-3 days to +3 days)
   const cStart = new Date(invDate);
-  cStart.setDate(cStart.getDate() - 2);
+  cStart.setDate(cStart.getDate() - 3);
   const cEnd = new Date(invDate);
   cEnd.setDate(cEnd.getDate() + 3);
 
@@ -82,7 +82,7 @@ export async function investigateInvoiceWithAI(invoiceId: number, customApiKey?:
       transactionDate: { gte: cStart, lte: cEnd },
     },
     orderBy: { transactionDate: 'asc' },
-    take: 60,
+    take: 100,
   });
 
   // Candidate Booking transactions (-60 days to +30 days)
@@ -127,31 +127,31 @@ ${relatedReservations.map(r => `- Gast: '${r.guestName}', Zimmer ${r.roomName}, 
 --- BANKÜBERWEISUNGEN IM ZEITRAUM (AUSZUG) ---
 ${bankTransactions.map(b => `- ID ${b.id}: ${Number(b.amount).toFixed(2)} € am ${new Date(b.bookingDate).toLocaleDateString('de-DE')} von '${b.senderReceiver || 'Unbekannt'}' | Verwendungszweck: '${b.description || ''}'`).join('\n') || 'Keine Banküberweisungen'}
 
---- KARTENZAHLUNGEN AM TERMINAL IM ZEITRAUM ---
-${cardPayments.map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine Kartenzahlungen'}
+--- KARTEN- & PAYPAL-ZAHLUNGEN (TERMINAL / ONLINE) IM ZEITRAUM ---
+${cardPayments.map(c => `- ID ${c.id}: ${Number(c.amount).toFixed(2)} € (${c.cardType}) am ${new Date(c.transactionDate).toLocaleDateString('de-DE')}`).join('\n') || 'Keine Karten- oder PayPal-Zahlungen'}
 
 --- BOOKING.COM AUSZAHLUNGEN IM ZEITRAUM ---
 ${bookingPayments.map(bp => `- ID ${bp.id}: ${Number(bp.amount).toFixed(2)} € für Gast '${bp.guestName || 'Unbekannt'}' (Auszahlung: ${bp.payoutDate ? new Date(bp.payoutDate).toLocaleDateString('de-DE') : 'k.A.'}, Ref: ${bp.referenceNumber})`).join('\n') || 'Keine Booking-Auszahlungen'}
 
 --- DEINE PRÜFUNGSAUFGABE ---
-1. Analysiere den Sachverhalt logisch:
-   - Welcher Teil der Rechnung ist bereits gedeckt (z.B. CityTax vor Ort gezahlt)?
-   - Welcher Betrag steht noch offen und wie sollte dieser bezahlt werden (z.B. Firmenüberweisung per Bank)?
-   - Gibt es in den Banküberweisungen, Kartenzahlungen oder Booking-Auszahlungen eine echte, zweifelsfreie Zahlung für diese offene Forderung?
+1. Analysiere den Sachverhalt logisch über alle Zahlungswege (Banküberweisungen, Terminal-Kartenzahlungen, PayPal-Zahlungen, Booking-Auszahlungen):
+   - Welcher Teil der Rechnung ist bereits gedeckt (z.B. Logis per PayPal oder Überweisung, CityTax vor Ort)?
+   - Welcher Betrag steht noch offen und wie sollte dieser bezahlt werden (z.B. PayPal, Girocard, Überweisung)?
+   - WICHTIG BEI PAYPAL: Wenn laut Hotelsoftware 'PayPal' gebucht ist oder der Gast online bezahlt hat, prüfe die Liste der Karten- & PayPal-Zahlungen sorgfältig. Häufig zahlen Gäste den reinen Zimmerpreis/Logis (z.B. 180.00 €) vorab per PayPal, während die CityTax (z.B. 6.00 €) offen bleibt. Ordne eine solche passende PayPal-Transaktion unbedingt zu und setze den Status auf PARTIAL (oder PAID, falls der Gesamtbetrag passt).
 2. Strenge Vorsicht bei Zuordnungen:
-   - Ordne eine Zahlung NUR zu, wenn Betrag und Kontext (Name, Firma, Gast, Rechnungsnummer oder klares Zahlart-Schema) zusammenpassen.
-   - Wenn eine Firmenrechnung per Überweisung bezahlt werden soll und auf dem Bankkonto kein passendes Geld eingegangen ist, ist die Rechnung "OPEN" (oder "PARTIAL", falls die CityTax schon bezahlt war). Erfinde NIEMALS zufällige Kartenzahlungen von anderen Gästen!
-3. Wenn die Rechnung nicht vollständig bezahlt ist: Setze "status": "OPEN" oder "PARTIAL", nenne den genauen offenen Restbetrag und erkläre dem Nutzer verständlich auf Deutsch, was geprüft wurde und was noch fehlt.
+   - Ordne eine Zahlung NUR zu, wenn Betrag und Kontext (Name, Gast, Rechnungsbetrag, Teilbetrag der Logis oder klares Zahlart-Schema) zusammenpassen.
+   - Wenn eine Firmenrechnung per Überweisung bezahlt werden soll und auf dem Bankkonto kein passendes Geld eingegangen ist, ist die Rechnung "OPEN" (oder "PARTIAL", falls ein Teilbetrag bereits nachgewiesen ist). Erfinde NIEMALS fremde Zahlungen!
+3. Wenn die Rechnung nicht vollständig bezahlt ist: Setze "status": "OPEN" oder "PARTIAL", nenne den genauen offenen Restbetrag und erkläre dem Nutzer verständlich auf Deutsch, was nachgewiesen wurde und was noch aussteht.
 
 Antworte AUSSCHLIESSLICH im folgenden JSON-Format (kein Markdown-Codeblock, nur pures JSON):
 {
   "status": "PAID" | "PARTIAL" | "OPEN",
   "headline": "Kurze, klare Überschrift",
-  "explanation": "Detaillierte, professionelle Begründung (2-4 Sätze) auf Deutsch mit Nennung von Gast/Firma, Daten und noch offenem Restbetrag.",
+  "explanation": "Detaillierte, professionelle Begründung (2-4 Sätze) auf Deutsch mit Nennung von Gast/Firma, Daten, Zahlart (z.B. PayPal) und noch offenem Restbetrag.",
   "confidence": 0.95,
   "suggestedComment": "Vorschlag für das Notizfeld",
   "matchedTransactions": [
-    { "type": "BANK" | "CARD" | "BOOKING", "id": 12345, "amount": 154.00, "date": "22.09.2026", "details": "Überweisung von ..." }
+    { "type": "BANK" | "CARD" | "BOOKING", "id": 12345, "amount": 180.00, "date": "07.10.2026", "details": "PayPal-Zahlung über ..." }
   ]
 }`;
 

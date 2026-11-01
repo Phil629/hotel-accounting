@@ -81,9 +81,16 @@ export const Dashboard: React.FC = () => {
     const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
     const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null);
     const [aiModalInvoice, setAiModalInvoice] = useState<Invoice | null>(null);
+    const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [statusFilter, setStatusFilter] = useState('');
+    const [reconciledInCurrentView, setReconciledInCurrentView] = useState<Set<number>>(new Set());
 
     const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, aiComment: string) => {
         const isReconciled = status === 'PAID';
+        if (statusFilter === 'Open' && isReconciled) {
+            setReconciledInCurrentView(prev => new Set(prev).add(invoiceId));
+        }
         setInvoices(prev => prev.map(inv => {
             if (inv.id === invoiceId) {
                 return {
@@ -256,6 +263,9 @@ export const Dashboard: React.FC = () => {
     const toggleManual = useCallback(async (id: number, currentStatus: boolean) => {
         // Optimistic Update: Update UI immediately
         const newStatus = !currentStatus;
+        if (statusFilter === 'Open' && newStatus) {
+            setReconciledInCurrentView(prev => new Set(prev).add(id));
+        }
         setInvoices(prev => prev.map(i => i.id === id ? { ...i, manualStatus: newStatus, isReconciled: newStatus } : i));
 
         try {
@@ -265,7 +275,7 @@ export const Dashboard: React.FC = () => {
             showToast('Failed to update status', 'error');
             setInvoices(prev => prev.map(i => i.id === id ? { ...i, manualStatus: currentStatus, isReconciled: currentStatus } : i));
         }
-    }, [showToast]);
+    }, [showToast, statusFilter]);
 
     const sortInvoices = useCallback((invoicesToSort: Invoice[]): Invoice[] => {
         return [...invoicesToSort].sort((a, b) => {
@@ -306,17 +316,12 @@ export const Dashboard: React.FC = () => {
         });
     }, [sortField, sortDirection]);
 
-    // State for selected month
-    const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [statusFilter, setStatusFilter] = useState('');
-
     // Filter invoices based on search term AND status filter
     const filteredInvoices = useMemo(() => {
         return invoices.filter(inv => {
             // 1. Status Filter
             if (statusFilter) {
-                if (statusFilter === 'Open' && (inv.isReconciled || inv.manualStatus)) return false;
+                if (statusFilter === 'Open' && (inv.isReconciled || inv.manualStatus) && !reconciledInCurrentView.has(inv.id)) return false;
                 if (statusFilter === 'Matched' && (!inv.isReconciled && !inv.manualStatus)) return false;
                 if (statusFilter === 'Prüfen' && inv.dunningStatus !== 'Prüfen') return false;
                 if (statusFilter === 'Reminder' && inv.dunningStatus !== 'Reminder') return false;
@@ -341,7 +346,7 @@ export const Dashboard: React.FC = () => {
                 (inv.comment && inv.comment.toLowerCase().includes(lowerTerm))
             );
         });
-    }, [invoices, searchTerm, statusFilter]);
+    }, [invoices, searchTerm, statusFilter, reconciledInCurrentView]);
 
     // Group by month (using filtered invoices) - ONLY used when NOT searching
     const groupedInvoices = useMemo(() => {
@@ -449,6 +454,7 @@ export const Dashboard: React.FC = () => {
 
     const handleMonthClick = (month: string) => {
         setSelectedMonth(month);
+        setReconciledInCurrentView(new Set());
     };
 
     // Set default selected month when months change
@@ -482,7 +488,10 @@ export const Dashboard: React.FC = () => {
                     />
                     <select
                         value={statusFilter}
-                        onChange={(e) => setStatusFilter(e.target.value)}
+                        onChange={(e) => {
+                            setStatusFilter(e.target.value);
+                            setReconciledInCurrentView(new Set());
+                        }}
                         style={{
                             padding: '0.5rem 1rem',
                             borderRadius: '20px',
@@ -501,6 +510,29 @@ export const Dashboard: React.FC = () => {
                         <option value="Warning 2">Dunning: Warning 2</option>
                         <option value="Inkasso">Dunning: Inkasso</option>
                     </select>
+                    {statusFilter === 'Open' && reconciledInCurrentView.size > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setReconciledInCurrentView(new Set())}
+                            style={{
+                                fontSize: '0.8rem',
+                                fontWeight: 600,
+                                background: '#dcfce7',
+                                color: '#166534',
+                                border: '1px solid #86efac',
+                                borderRadius: '20px',
+                                padding: '0.4rem 0.85rem',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '6px',
+                                transition: 'all 0.2s',
+                            }}
+                            title="Erledigte Rechnungen jetzt ausblenden"
+                        >
+                            <span>✓</span> {reconciledInCurrentView.size} erledigt (Jetzt ausblenden)
+                        </button>
+                    )}
                 </div>
                 <div style={{ display: 'flex', gap: '1rem' }}>
                     <button className="btn"
