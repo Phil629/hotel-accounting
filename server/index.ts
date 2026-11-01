@@ -396,7 +396,7 @@ app.post('/api/invoices/:id/comment', async (req, res) => {
     try {
         await prisma.invoice.update({
             where: { id: parseInt(req.params.id) },
-            data:  { comment: req.body.comment },
+            data:  { ...(req.body.comment !== undefined ? { comment: req.body.comment } : {}), ...(req.body.aiComment !== undefined ? { aiComment: req.body.aiComment } : {}) },
         });
         res.json({ success: true });
     } catch (error) {

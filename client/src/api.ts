@@ -54,11 +54,11 @@ export const api = {
         return res.json();
     },
 
-    updateComment: async (id: number, comment: string) => {
+    updateComment: async (id: number, comment?: string, aiComment?: string) => {
         const res = await fetch(`${API_URL}/invoices/${id}/comment`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ comment })
+            body: JSON.stringify({ comment, aiComment })
         });
         return res.json();
     },

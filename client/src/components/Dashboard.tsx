@@ -35,6 +35,7 @@ interface Invoice {
     isReconciled: boolean;
     manualStatus: boolean;
     comment: string | null;
+    aiComment?: string | null;
     matches?: any[];
     pmsPayments?: PmsPayment[];
     roomReservations?: RoomReservation[];
@@ -81,7 +82,7 @@ export const Dashboard: React.FC = () => {
     const [toast, setToast] = useState<Omit<ToastProps, 'onClose'> | null>(null);
     const [aiModalInvoice, setAiModalInvoice] = useState<Invoice | null>(null);
 
-    const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, comment: string) => {
+    const handleAiApplied = (invoiceId: number, status: 'PAID' | 'PARTIAL' | 'OPEN', amount: number, aiComment: string) => {
         const isReconciled = status === 'PAID';
         setInvoices(prev => prev.map(inv => {
             if (inv.id === invoiceId) {
@@ -91,7 +92,7 @@ export const Dashboard: React.FC = () => {
                     manualStatus: isReconciled,
                     status: status,
                     amountPaid: status === 'OPEN' ? inv.amountPaid : amount,
-                    comment: comment || inv.comment,
+                    aiComment: aiComment || inv.aiComment,
                 };
             }
             return inv;
@@ -101,7 +102,7 @@ export const Dashboard: React.FC = () => {
                 ? 'Rechnung vollständig bezahlt & abgehakt!'
                 : status === 'PARTIAL'
                 ? `Teilzahlung (${amount.toFixed(2)} €) erfasst – Restbetrag bleibt offen!`
-                : 'Notiz zur offenen Rechnung gespeichert!', 
+                : 'KI-Bericht gespeichert (Rechnung bleibt offen)!', 
             type: 'success' 
         });
     };
@@ -1176,13 +1177,56 @@ const InvoiceRow: React.FC<InvoiceRowProps> = React.memo(({ inv, onToggleManual,
             </td>
             <td>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
-                    <input
-                        type="text"
-                        value={commentValue}
-                        onChange={handleCommentChange}
-                        placeholder="Kommentar..."
-                        style={{ width: '100%', padding: '0.25rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.8rem', color: 'black' }}
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <input
+                            type="text"
+                            value={commentValue}
+                            onChange={handleCommentChange}
+                            placeholder="Kommentar..."
+                            style={{ flex: 1, minWidth: 0, padding: '0.25rem', border: '1px solid var(--border)', borderRadius: '4px', fontSize: '0.8rem', color: 'black' }}
+                        />
+                        {inv.aiComment && (
+                            <div className="tooltip-container" style={{ display: 'inline-flex', alignItems: 'center', flexShrink: 0 }}>
+                                <span style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    width: '20px',
+                                    height: '20px',
+                                    borderRadius: '50%',
+                                    backgroundColor: '#fef3c7',
+                                    color: '#b45309',
+                                    border: '1.5px solid #f59e0b',
+                                    fontSize: '0.78rem',
+                                    fontWeight: 800,
+                                    cursor: 'help',
+                                    boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+                                }}>
+                                    !
+                                </span>
+                                <div className="tooltip tooltip-rich" style={{
+                                    minWidth: '240px',
+                                    maxWidth: '320px',
+                                    whiteSpace: 'normal',
+                                    textAlign: 'left',
+                                    padding: '10px 12px',
+                                    fontSize: '0.82rem',
+                                    lineHeight: 1.45,
+                                    background: '#1e1b4b',
+                                    color: '#f8fafc',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.4)',
+                                    border: '1px solid rgba(255,255,255,0.15)',
+                                    zIndex: 100,
+                                }}>
+                                    <div style={{ fontWeight: 700, color: '#fde047', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                        <span>✨ KI-Prüfbericht:</span>
+                                    </div>
+                                    <div style={{ color: '#e2e8f0' }}>{inv.aiComment}</div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                     {/* Dunning / Reminder Controls */}
                     <div style={{ display: 'flex', gap: '0.25rem' }}>
                         <select

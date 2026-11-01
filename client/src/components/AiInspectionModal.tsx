@@ -90,11 +90,11 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
     setError(null);
 
     try {
-      await api.updateComment(invoice.id, commentInput);
+      await api.updateComment(invoice.id, undefined, commentInput);
       onApplied(invoice.id, 'OPEN', Number(invoice.amount), commentInput);
       onClose();
     } catch (e: any) {
-      setError(e.message || 'Konnte den Kommentar nicht speichern.');
+      setError(e.message || 'Konnte die KI-Notiz nicht speichern.');
     } finally {
       setApplying(false);
     }
@@ -113,7 +113,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
       await api.applyAiMatch(invoice.id, {
         status: suggestion.status,
         amountPaid: actualPaid,
-        comment: commentInput,
+        aiComment: commentInput,
         matches: suggestion.matchedTransactions.map(t => ({
           type: t.type,
           id: t.id,
@@ -372,7 +372,7 @@ export const AiInspectionModal: React.FC<AiInspectionModalProps> = ({
               {/* Suggested Comment */}
               <div>
                 <label style={{ display: 'block', fontSize: '0.78rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '4px' }}>
-                  Kommentar für die Rechnung (wird beim Abhaken gespeichert):
+                  KI-Befund / Info-Hinweis (wird beim [!] Symbol der Rechnung hinterlegt):
                 </label>
                 <input
                   type="text"

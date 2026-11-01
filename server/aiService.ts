@@ -221,6 +221,7 @@ export async function applyAiMatch(invoiceId: number, data: {
   status?: 'PAID' | 'PARTIAL' | 'OPEN';
   amountPaid?: number;
   comment?: string;
+  aiComment?: string;
   matches: {
     type: 'CARD' | 'BANK' | 'BOOKING';
     id: number;
@@ -244,6 +245,7 @@ export async function applyAiMatch(invoiceId: number, data: {
         status: data.status || 'PAID',
         amountPaid: targetAmountPaid,
         comment: data.comment !== undefined ? data.comment : inv.comment,
+        aiComment: data.aiComment !== undefined ? data.aiComment : inv.aiComment,
       },
     });
 

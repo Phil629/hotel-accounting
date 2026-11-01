@@ -30,6 +30,7 @@ model Invoice {
   reconciledDate DateTime?
   manualStatus   Boolean   @default(false) // Manually checked off
   comment        String?
+  aiComment      String?
 
   // Dunning / Reminder
   dunningStatus String? // "Reminder", "Warning 1", "Warning 2"
