@@ -142,6 +142,14 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ apiKey })
         });
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            const text = await res.text();
+            if (text.includes('<!doctype') || text.includes('<html')) {
+                throw new Error('Der Backend-Server wird gerade auf Render neu gestartet oder aktualisiert. Bitte 1-2 Minuten warten und erneut versuchen.');
+            }
+            throw new Error(text || 'Ungültige Server-Antwort');
+        }
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || 'KI-Prüfung fehlgeschlagen');
@@ -155,6 +163,14 @@ export const api = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(data)
         });
+        const contentType = res.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            const text = await res.text();
+            if (text.includes('<!doctype') || text.includes('<html')) {
+                throw new Error('Der Backend-Server wird gerade auf Render neu gestartet. Bitte kurz warten.');
+            }
+            throw new Error(text || 'Ungültige Server-Antwort');
+        }
         if (!res.ok) {
             const err = await res.json().catch(() => ({}));
             throw new Error(err.error || 'Konnte Vorschlag nicht anwenden');

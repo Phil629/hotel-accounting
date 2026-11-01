@@ -423,6 +423,30 @@ app.post('/api/invoices/:id/dunning', async (req, res) => {
     }
 });
 
+// ─── AI Invoice Inspection & Matching ─────────────────────────────────────────
+app.post('/api/invoices/:id/ai-check', async (req, res) => {
+    try {
+        const invoiceId = parseInt(req.params.id, 10);
+        const { apiKey } = req.body || {};
+        const result = await investigateInvoiceWithAI(invoiceId, apiKey);
+        res.json(result);
+    } catch (error: any) {
+        console.error('Error during AI invoice check:', error);
+        res.status(500).json({ error: error.message || 'AI check failed' });
+    }
+});
+
+app.post('/api/invoices/:id/ai-apply', async (req, res) => {
+    try {
+        const invoiceId = parseInt(req.params.id, 10);
+        const result = await applyAiMatch(invoiceId, req.body);
+        res.json({ success: true, invoice: result });
+    } catch (error: any) {
+        console.error('Error applying AI match:', error);
+        res.status(500).json({ error: error.message || 'Failed to apply AI match' });
+    }
+});
+
 // JSON backup of all data (#17)
 // Capped at BACKUP_ROW_CAP rows per table to prevent OOM on large datasets.
 // The response includes a `truncated` flag when any table hit the cap.
